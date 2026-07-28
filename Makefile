@@ -34,6 +34,12 @@ migrate-ticket-up: ## Run ticket-service migrations (up)
 migrate-ticket-down: ## Rollback ticket-service migrations
 	docker compose exec postgres migrate -path /migrations/ticket -database "postgresql://postgres:postgres@localhost:5432/entra_ticket?sslmode=disable" -verbose down
 
+migrate-payment-up: ## Run payment-service migrations (up)
+	docker compose exec postgres migrate -path /migrations/payment -database "postgresql://postgres:postgres@localhost:5432/entra_payment?sslmode=disable" -verbose up
+
+migrate-payment-down: ## Rollback payment-service migrations
+	docker compose exec postgres migrate -path /migrations/payment -database "postgresql://postgres:postgres@localhost:5432/entra_payment?sslmode=disable" -verbose down
+
 # ─── sqlc ─────────────────────────────────────
 
 sqlc-auth: ## Generate sqlc code for auth-service
@@ -44,11 +50,12 @@ sqlc-event: ## Generate sqlc code for event-service
 
 sqlc-all: sqlc-auth sqlc-event ## Generate sqlc code for all services
 	cd ticket-service && sqlc generate
+	cd payment-service && sqlc generate
 
 # ─── Build & Run ──────────────────────────────
 
 build: ## Build all services
-	go build ./auth-service/... ./event-service/... ./ticket-service/...
+	go build ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/...
 
 run-auth: ## Run auth-service locally
 	go run ./auth-service/cmd/api
@@ -58,6 +65,9 @@ run-event: ## Run event-service locally
 
 run-ticket: ## Run ticket-service locally
 	go run ./ticket-service/cmd/api
+
+run-payment: ## Run payment-service locally
+	go run ./payment-service/cmd/api
 
 # ─── Lint & Test ──────────────────────────────
 

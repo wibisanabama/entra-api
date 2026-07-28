@@ -169,5 +169,17 @@ func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 		_ = s.eventClient.ReleaseTickets(ctx, item.TicketTypeID.String(), item.Quantity)
 	}
 
+	// Publish Kafka Event
+	eventPayload := map[string]interface{}{
+		"order_id": orderID,
+	}
+	payloadBytes, _ := json.Marshal(eventPayload)
+	_ = s.producer.Publish(ctx, "order.cancelled", []byte(orderID), payloadBytes)
+
 	return nil
+}
+
+func (s *TicketService) HandlePaymentFailed(ctx context.Context, orderID string) error {
+	slog.Info("handling payment failed, cancelling order", "order_id", orderID)
+	return s.CancelOrder(ctx, orderID)
 }

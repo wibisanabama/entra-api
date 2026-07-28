@@ -3,6 +3,7 @@ go 1.26.4
 use (
 	./auth-service
 	./event-service
+	./payment-service
 	./shared
 	./ticket-service
 )

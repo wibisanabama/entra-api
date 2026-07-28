@@ -9,17 +9,15 @@ import (
 	"syscall"
 	"time"
 
+	"entra-api/payment-service/internal/consumer"
+	"entra-api/payment-service/internal/handler"
+	"entra-api/payment-service/internal/repository/db"
+	"entra-api/payment-service/internal/service"
+
 	"entra-api/shared/config"
 	"entra-api/shared/database"
 	"entra-api/shared/kafka"
 	"entra-api/shared/middleware"
-	
-	"entra-api/ticket-service/internal/client"
-	"entra-api/ticket-service/internal/consumer"
-	"entra-api/ticket-service/internal/handler"
-	"entra-api/ticket-service/internal/repository/db"
-	"entra-api/ticket-service/internal/service"
-	"entra-api/ticket-service/internal/worker"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,9 +27,8 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Load()
-	cfg.Database.DBName = getEnv("POSTGRES_DB", "entra_event") // Using event DB since it holds the schema for testing or maybe separate DB. Let's use entra_ticket
-	cfg.Database.DBName = getEnv("TICKET_DB", "entra_ticket")
-	cfg.Server.Port = getEnv("TICKET_SERVICE_PORT", "8083")
+	cfg.Database.DBName = getEnv("PAYMENT_DB", "entra_payment")
+	cfg.Server.Port = getEnv("PAYMENT_SERVICE_PORT", "8084")
 
 	ctx := context.Background()
 	pool, err := database.NewPostgresPool(ctx, cfg.Database)
@@ -41,52 +38,39 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Kafka Producer
 	producer, err := kafka.NewProducer(cfg.Kafka.Brokers, logger)
 	if err != nil {
 		logger.Error("failed to init kafka producer", slog.String("error", err.Error()))
-		// In a real app we might fail, here we'll just log
 	} else {
 		defer producer.Close()
 	}
 
-	// Internal Clients
-	eventClient := client.NewEventClient("http://event-service:8082")
-
-	// Layers
 	queries := db.New(pool)
-	ticketService := service.NewTicketService(queries, eventClient, producer)
-	orderHandler := handler.NewOrderHandler(ticketService)
+	paymentService := service.NewPaymentService(queries, producer)
+	paymentHandler := handler.NewPaymentHandler(queries, paymentService)
 
-	// Kafka Consumer for Payments
-	paymentConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "ticket-service-group", logger)
+	// Kafka Consumer
+	orderConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "payment-service-group", logger)
 	if err != nil {
 		logger.Error("failed to create consumer group", slog.String("error", err.Error()))
 	} else {
-		defer paymentConsumerGroup.Close()
-		paymentConsumerHandler := consumer.NewPaymentConsumer(ticketService)
-
+		defer orderConsumerGroup.Close()
+		orderConsumerHandler := consumer.NewOrderConsumer(paymentService)
+		
 		go func() {
-			topics := []string{"payment.success", "payment.failed"}
-			if err := paymentConsumerGroup.Consume(ctx, topics, paymentConsumerHandler.HandleMessage); err != nil {
+			topics := []string{"order.created", "order.cancelled"}
+			if err := orderConsumerGroup.Consume(ctx, topics, orderConsumerHandler.HandleMessage); err != nil {
 				logger.Error("consumer error", slog.String("error", err.Error()))
 			}
 		}()
 	}
 
-	// Worker
-	expiryWorker := worker.NewExpiryWorker(queries, ticketService)
-	workerCtx, workerCancel := context.WithCancel(context.Background())
-	go expiryWorker.Start(workerCtx)
-
-	// Server
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
-	handler.RegisterRoutes(r, orderHandler, cfg.JWT.Secret)
+	handler.RegisterRoutes(r, paymentHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
@@ -94,7 +78,7 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("ticket-service starting", slog.String("port", cfg.Server.Port))
+		logger.Info("payment-service starting", slog.String("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("server error", slog.String("error", err.Error()))
 			os.Exit(1)
@@ -106,7 +90,6 @@ func main() {
 	<-quit
 
 	logger.Info("shutting down...")
-	workerCancel() // stop worker
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
