@@ -46,7 +46,7 @@ entra-api/
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url> && cd entra-api
+git clone https://github.com/wibisanabama/entra-api.git && cd entra-api
 
 # 2. Copy environment variables
 cp .env.example .env
