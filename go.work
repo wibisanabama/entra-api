@@ -4,6 +4,7 @@ use (
 	./auth-service
 	./cashless-service
 	./event-service
+	./gate-service
 	./payment-service
 	./shared
 	./ticket-service

@@ -132,7 +132,7 @@ func (s *TicketService) HandlePaymentSuccess(ctx context.Context, orderID string
 	for _, item := range items {
 		for i := int32(0); i < item.Quantity; i++ {
 			ticketCode := uuid.New().String() // Simple barcode payload
-			_, err := s.queries.CreateTicket(ctx, db.CreateTicketParams{
+			ticket, err := s.queries.CreateTicket(ctx, db.CreateTicketParams{
 				OrderID:      oid,
 				UserID:       order.UserID,
 				EventID:      order.EventID,
@@ -141,7 +141,17 @@ func (s *TicketService) HandlePaymentSuccess(ctx context.Context, orderID string
 			})
 			if err != nil {
 				slog.Error("failed to create ticket", "error", err)
+				continue
 			}
+
+			// Publish ticket.created event
+			ticketPayload := map[string]interface{}{
+				"ticket_id":   ticket.ID.String(),
+				"ticket_code": ticket.TicketCode,
+				"status":      ticket.Status,
+			}
+			payloadBytes, _ := json.Marshal(ticketPayload)
+			_ = s.producer.Publish(ctx, "ticket.created", []byte(ticket.ID.String()), payloadBytes)
 		}
 	}
 

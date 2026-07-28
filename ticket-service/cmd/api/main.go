@@ -69,7 +69,23 @@ func main() {
 		go func() {
 			topics := []string{"payment.success", "payment.failed"}
 			if err := paymentConsumerGroup.Consume(ctx, topics, paymentConsumerHandler.HandleMessage); err != nil {
-				logger.Error("consumer error", slog.String("error", err.Error()))
+				logger.Error("payment consumer error", slog.String("error", err.Error()))
+			}
+		}()
+	}
+
+	// Kafka Consumer for General Events (Gate Scans)
+	eventConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "ticket-event-group", logger)
+	if err != nil {
+		logger.Error("failed to create event consumer group", slog.String("error", err.Error()))
+	} else {
+		defer eventConsumerGroup.Close()
+		eventConsumerHandler := consumer.NewEventConsumer(queries)
+
+		go func() {
+			topics := []string{"ticket.scanned"}
+			if err := eventConsumerGroup.Consume(ctx, topics, eventConsumerHandler.HandleMessage); err != nil {
+				logger.Error("event consumer error", slog.String("error", err.Error()))
 			}
 		}()
 	}

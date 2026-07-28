@@ -46,6 +46,12 @@ migrate-cashless-up: ## Run cashless-service migrations (up)
 migrate-cashless-down: ## Rollback cashless-service migrations
 	docker compose exec postgres migrate -path /migrations/cashless -database "postgresql://postgres:postgres@localhost:5432/entra_cashless?sslmode=disable" -verbose down
 
+migrate-gate-up: ## Run gate-service migrations (up)
+	docker compose exec postgres migrate -path /migrations/gate -database "postgresql://postgres:postgres@localhost:5432/entra_gate?sslmode=disable" -verbose up
+
+migrate-gate-down: ## Rollback gate-service migrations
+	docker compose exec postgres migrate -path /migrations/gate -database "postgresql://postgres:postgres@localhost:5432/entra_gate?sslmode=disable" -verbose down
+
 # ─── sqlc ─────────────────────────────────────
 
 sqlc-auth: ## Generate sqlc code for auth-service
@@ -58,11 +64,12 @@ sqlc-all: sqlc-auth sqlc-event ## Generate sqlc code for all services
 	cd ticket-service && sqlc generate
 	cd payment-service && sqlc generate
 	cd cashless-service && sqlc generate
+	cd gate-service && sqlc generate
 
 # ─── Build & Run ──────────────────────────────
 
 build: ## Build all services
-	go build ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/... ./cashless-service/...
+	go build ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/... ./cashless-service/... ./gate-service/...
 
 run-auth: ## Run auth-service locally
 	go run ./auth-service/cmd/api
@@ -78,6 +85,9 @@ run-payment: ## Run payment-service locally
 
 run-cashless: ## Run cashless-service locally
 	go run ./cashless-service/cmd/api
+
+run-gate: ## Run gate-service locally
+	go run ./gate-service/cmd/api
 
 # ─── Lint & Test ──────────────────────────────
 
