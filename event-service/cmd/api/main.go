@@ -38,11 +38,22 @@ func main() {
 	defer pool.Close()
 	logger.Info("connected to PostgreSQL")
 
+	// Setup Redis
+	redisClient, err := database.NewRedisClient(ctx, cfg.Redis)
+	if err != nil {
+		logger.Error("failed to connect to redis", slog.String("error", err.Error()))
+		// We can still run without cache, but for this exercise we'll exit or log. Let's just log and continue, or exit.
+		// Exiting is safer to guarantee cache behavior.
+		os.Exit(1)
+	}
+	defer redisClient.Close()
+	logger.Info("connected to Redis")
+
 	// Initialize layers
 	queries := db.New(pool)
 	venueService := service.NewVenueService(queries)
 	venueHandler := handler.NewVenueHandler(venueService)
-	eventService := service.NewEventService(queries)
+	eventService := service.NewEventService(queries, redisClient)
 	eventHandler := handler.NewEventHandler(eventService)
 	categoryHandler := handler.NewCategoryHandler(queries)
 	internalTicketHandler := handler.NewInternalTicketHandler(queries)
