@@ -7,5 +7,6 @@ use (
 	./gate-service
 	./payment-service
 	./shared
+	./storage-service
 	./ticket-service
 )

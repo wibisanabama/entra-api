@@ -69,7 +69,7 @@ sqlc-all: sqlc-auth sqlc-event ## Generate sqlc code for all services
 # ─── Build & Run ──────────────────────────────
 
 build: ## Build all services
-	go build ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/... ./cashless-service/... ./gate-service/...
+	go build ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/... ./cashless-service/... ./gate-service/... ./storage-service/...
 
 run-auth: ## Run auth-service locally
 	go run ./auth-service/cmd/api
@@ -88,6 +88,9 @@ run-cashless: ## Run cashless-service locally
 
 run-gate: ## Run gate-service locally
 	go run ./gate-service/cmd/api
+
+run-storage: ## Run storage-service locally
+	go run ./storage-service/cmd/api
 
 # ─── Lint & Test ──────────────────────────────
 

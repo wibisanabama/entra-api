@@ -65,6 +65,39 @@ services:
       timeout: 10s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: entra-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: entra_minio
+      MINIO_ROOT_PASSWORD: entra_minio_secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-setup:
+    image: minio/mc:latest
+    container_name: entra-minio-setup
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set entra http://minio:9000 entra_minio entra_minio_secret;
+      mc mb entra/entra-media --ignore-existing;
+      mc anonymous set public entra/entra-media;
+      exit 0;
+      "
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
