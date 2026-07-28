@@ -2,7 +2,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id UUID NOT NULL UNIQUE,
+    reference_id UUID NOT NULL,
+    reference_type VARCHAR(20) NOT NULL,
     user_id UUID NOT NULL,
     amount DECIMAL(15, 2) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',

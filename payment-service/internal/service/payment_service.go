@@ -25,8 +25,8 @@ func NewPaymentService(queries *db.Queries, producer *kafka.Producer) *PaymentSe
 	}
 }
 
-func (s *PaymentService) CreatePaymentIntent(ctx context.Context, orderID, userID string, amount float64) error {
-	oid, err := uuid.Parse(orderID)
+func (s *PaymentService) CreatePaymentIntent(ctx context.Context, referenceID, referenceType, userID string, amount float64) error {
+	rid, err := uuid.Parse(referenceID)
 	if err != nil {
 		return err
 	}
@@ -39,14 +39,15 @@ func (s *PaymentService) CreatePaymentIntent(ctx context.Context, orderID, userI
 	_ = amt.Scan(fmt.Sprintf("%f", amount))
 
 	// Mock payment URL
-	paymentURL := fmt.Sprintf("https://sandbox.entra.local/pay/%s", orderID)
+	paymentURL := fmt.Sprintf("https://sandbox.entra.local/pay/%s", referenceID)
 
 	_, err = s.queries.CreatePayment(ctx, db.CreatePaymentParams{
-		OrderID:    oid,
-		UserID:     uid,
-		Amount:     amt,
-		Status:     "PENDING",
-		PaymentUrl: pgtype.Text{String: paymentURL, Valid: true},
+		ReferenceID:   rid,
+		ReferenceType: referenceType,
+		UserID:        uid,
+		Amount:        amt,
+		Status:        "PENDING",
+		PaymentUrl:    pgtype.Text{String: paymentURL, Valid: true},
 	})
 	if err != nil {
 		slog.Error("failed to create payment intent", "error", err)
@@ -80,11 +81,14 @@ func (s *PaymentService) SimulatePayment(ctx context.Context, paymentID string, 
 		return nil, err
 	}
 
-	// Publish event back to ticket service
+	// Publish event back to originating service
 	payload := map[string]interface{}{
-		"order_id": payment.OrderID.String(),
-		"status":   status,
+		"reference_id":   payment.ReferenceID.String(),
+		"reference_type": payment.ReferenceType,
+		"status":         status,
 	}
+	// Also populate order_id for backward compatibility with ticket-service, or just refactor ticket service to read reference_id if needed.
+	// But it's cleaner if ticket service expects reference_id and reference_type now. We'll update ticket service.
 	payloadBytes, _ := json.Marshal(payload)
 
 	topic := "payment.success"
@@ -92,18 +96,21 @@ func (s *PaymentService) SimulatePayment(ctx context.Context, paymentID string, 
 		topic = "payment.failed"
 	}
 
-	_ = s.producer.Publish(ctx, topic, []byte(payment.OrderID.String()), payloadBytes)
+	_ = s.producer.Publish(ctx, topic, []byte(payment.ReferenceID.String()), payloadBytes)
 
 	return &updated, nil
 }
 
-func (s *PaymentService) HandleOrderCancelled(ctx context.Context, orderID string) error {
-	oid, err := uuid.Parse(orderID)
+func (s *PaymentService) HandleReferenceCancelled(ctx context.Context, referenceID, referenceType string) error {
+	rid, err := uuid.Parse(referenceID)
 	if err != nil {
 		return err
 	}
 
-	payment, err := s.queries.GetPaymentByOrderID(ctx, oid)
+	payment, err := s.queries.GetPaymentByReferenceID(ctx, db.GetPaymentByReferenceIDParams{
+		ReferenceID:   rid,
+		ReferenceType: referenceType,
+	})
 	if err != nil {
 		return err // might not exist
 	}

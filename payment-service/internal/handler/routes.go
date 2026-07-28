@@ -15,6 +15,6 @@ func RegisterRoutes(r *gin.Engine, ph *PaymentHandler) {
 	api.Use(middleware.CORS()) // simple cors for dev
 
 	// These would normally be protected, but open for simulation
-	api.GET("/payments/order/:order_id", ph.GetPaymentByOrder)
+	api.GET("/payments/reference/:reference_id", ph.GetPaymentByReference)
 	api.POST("/payments/:id/simulate", ph.SimulatePayment)
 }

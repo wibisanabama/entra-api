@@ -23,23 +23,29 @@ func (c *PaymentConsumer) HandleMessage(ctx context.Context, message *sarama.Con
 	case "payment.success":
 		var payload map[string]interface{}
 		if err := json.Unmarshal(message.Value, &payload); err == nil {
-			if orderID, ok := payload["order_id"].(string); ok {
-				err := c.ticketService.HandlePaymentSuccess(ctx, orderID)
-				if err != nil {
-					return err
+			refType, _ := payload["reference_type"].(string)
+			if refType == "TICKET" {
+				if orderID, ok := payload["reference_id"].(string); ok {
+					err := c.ticketService.HandlePaymentSuccess(ctx, orderID)
+					if err != nil {
+						return err
+					}
+					slog.Info("processed payment success, tickets generated", "order_id", orderID)
 				}
-				slog.Info("processed payment success, tickets generated", "order_id", orderID)
 			}
 		}
 	case "payment.failed":
 		var payload map[string]interface{}
 		if err := json.Unmarshal(message.Value, &payload); err == nil {
-			if orderID, ok := payload["order_id"].(string); ok {
-				err := c.ticketService.HandlePaymentFailed(ctx, orderID)
-				if err != nil {
-					return err
+			refType, _ := payload["reference_type"].(string)
+			if refType == "TICKET" {
+				if orderID, ok := payload["reference_id"].(string); ok {
+					err := c.ticketService.HandlePaymentFailed(ctx, orderID)
+					if err != nil {
+						return err
+					}
+					slog.Info("processed payment failed, order cancelled", "order_id", orderID)
 				}
-				slog.Info("processed payment failed, order cancelled", "order_id", orderID)
 			}
 		}
 	}

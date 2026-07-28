@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS topups;
+DROP TABLE IF EXISTS wallets;

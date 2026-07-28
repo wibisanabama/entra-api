@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"entra-api/payment-service/internal/consumer"
-	"entra-api/payment-service/internal/handler"
-	"entra-api/payment-service/internal/repository/db"
-	"entra-api/payment-service/internal/service"
+	"entra-api/cashless-service/internal/consumer"
+	"entra-api/cashless-service/internal/handler"
+	"entra-api/cashless-service/internal/repository/db"
+	"entra-api/cashless-service/internal/service"
 
 	"entra-api/shared/config"
 	"entra-api/shared/database"
@@ -27,8 +27,8 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Load()
-	cfg.Database.DBName = getEnv("PAYMENT_DB", "entra_payment")
-	cfg.Server.Port = getEnv("PAYMENT_SERVICE_PORT", "8084")
+	cfg.Database.DBName = getEnv("CASHLESS_DB", "entra_cashless")
+	cfg.Server.Port = getEnv("CASHLESS_SERVICE_PORT", "8085")
 
 	ctx := context.Background()
 	pool, err := database.NewPostgresPool(ctx, cfg.Database)
@@ -46,20 +46,20 @@ func main() {
 	}
 
 	queries := db.New(pool)
-	paymentService := service.NewPaymentService(queries, producer)
-	paymentHandler := handler.NewPaymentHandler(queries, paymentService)
+	walletService := service.NewWalletService(queries, producer)
+	walletHandler := handler.NewWalletHandler(walletService)
 
 	// Kafka Consumer
-	orderConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "payment-service-group", logger)
+	paymentConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "cashless-service-group", logger)
 	if err != nil {
 		logger.Error("failed to create consumer group", slog.String("error", err.Error()))
 	} else {
-		defer orderConsumerGroup.Close()
-		eventConsumerHandler := consumer.NewEventConsumer(paymentService)
+		defer paymentConsumerGroup.Close()
+		paymentConsumerHandler := consumer.NewPaymentConsumer(walletService)
 		
 		go func() {
-			topics := []string{"order.created", "order.cancelled", "topup.created"}
-			if err := orderConsumerGroup.Consume(ctx, topics, eventConsumerHandler.HandleMessage); err != nil {
+			topics := []string{"payment.success", "payment.failed"}
+			if err := paymentConsumerGroup.Consume(ctx, topics, paymentConsumerHandler.HandleMessage); err != nil {
 				logger.Error("consumer error", slog.String("error", err.Error()))
 			}
 		}()
@@ -70,7 +70,7 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(middleware.Logger(logger))
 
-	handler.RegisterRoutes(r, paymentHandler)
+	handler.RegisterRoutes(r, walletHandler, cfg.JWT.Secret)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
@@ -78,7 +78,7 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("payment-service starting", slog.String("port", cfg.Server.Port))
+		logger.Info("cashless-service starting", slog.String("port", cfg.Server.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("server error", slog.String("error", err.Error()))
 			os.Exit(1)

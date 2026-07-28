@@ -8,9 +8,10 @@ import (
 )
 
 type Payment struct {
-	ID         uuid.UUID      `json:"id"`
-	OrderID    uuid.UUID      `json:"order_id"`
-	UserID     uuid.UUID      `json:"user_id"`
+	ID            uuid.UUID      `json:"id"`
+	ReferenceID   uuid.UUID      `json:"reference_id"`
+	ReferenceType string         `json:"reference_type"`
+	UserID        uuid.UUID      `json:"user_id"`
 	Amount     pgtype.Numeric `json:"amount"`
 	Status     string         `json:"status"`
 	PaymentUrl pgtype.Text    `json:"payment_url"`
