@@ -30,6 +30,7 @@ Thumbs.db
 # Docker volumes
 postgres_data/
 redis_data/
+minio_data/
 
 # Build output
 bin/
