@@ -27,3 +27,8 @@ DELETE FROM ticket_types WHERE id = $1;
 UPDATE ticket_types SET sold = sold + $2, updated_at = NOW()
 WHERE id = $1 AND (quantity - sold) >= $2
 RETURNING *;
+
+-- name: DecrementTicketSold :one
+UPDATE ticket_types SET sold = sold - $2, updated_at = NOW()
+WHERE id = $1 AND sold >= $2
+RETURNING *;

@@ -17,16 +17,22 @@ logs: ## Tail infrastructure container logs
 # ─── Database Migrations ─────────────────────
 
 migrate-auth-up: ## Run auth-service migrations (up)
-	migrate -path auth-service/migrations -database "postgres://entra:entra_secret@localhost:5432/entra_auth?sslmode=disable" up
+	docker compose exec postgres migrate -path /migrations/auth -database "postgresql://postgres:postgres@localhost:5432/entra_auth?sslmode=disable" -verbose up
 
 migrate-auth-down: ## Rollback auth-service migrations
-	migrate -path auth-service/migrations -database "postgres://entra:entra_secret@localhost:5432/entra_auth?sslmode=disable" down 1
+	docker compose exec postgres migrate -path /migrations/auth -database "postgresql://postgres:postgres@localhost:5432/entra_auth?sslmode=disable" -verbose down
 
 migrate-event-up: ## Run event-service migrations (up)
-	migrate -path event-service/migrations -database "postgres://entra:entra_secret@localhost:5432/entra_event?sslmode=disable" up
+	docker compose exec postgres migrate -path /migrations/event -database "postgresql://postgres:postgres@localhost:5432/entra_event?sslmode=disable" -verbose up
 
 migrate-event-down: ## Rollback event-service migrations
-	migrate -path event-service/migrations -database "postgres://entra:entra_secret@localhost:5432/entra_event?sslmode=disable" down 1
+	docker compose exec postgres migrate -path /migrations/event -database "postgresql://postgres:postgres@localhost:5432/entra_event?sslmode=disable" -verbose down
+
+migrate-ticket-up: ## Run ticket-service migrations (up)
+	docker compose exec postgres migrate -path /migrations/ticket -database "postgresql://postgres:postgres@localhost:5432/entra_ticket?sslmode=disable" -verbose up
+
+migrate-ticket-down: ## Rollback ticket-service migrations
+	docker compose exec postgres migrate -path /migrations/ticket -database "postgresql://postgres:postgres@localhost:5432/entra_ticket?sslmode=disable" -verbose down
 
 # ─── sqlc ─────────────────────────────────────
 
@@ -37,17 +43,21 @@ sqlc-event: ## Generate sqlc code for event-service
 	cd event-service && sqlc generate
 
 sqlc-all: sqlc-auth sqlc-event ## Generate sqlc code for all services
+	cd ticket-service && sqlc generate
 
 # ─── Build & Run ──────────────────────────────
 
 build: ## Build all services
-	go build ./auth-service/... ./event-service/...
+	go build ./auth-service/... ./event-service/... ./ticket-service/...
 
 run-auth: ## Run auth-service locally
 	go run ./auth-service/cmd/api
 
 run-event: ## Run event-service locally
 	go run ./event-service/cmd/api
+
+run-ticket: ## Run ticket-service locally
+	go run ./ticket-service/cmd/api
 
 # ─── Lint & Test ──────────────────────────────
 

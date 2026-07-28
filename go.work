@@ -1,7 +1,8 @@
 go 1.26.4
 
 use (
-	./shared
 	./auth-service
 	./event-service
+	./shared
+	./ticket-service
 )

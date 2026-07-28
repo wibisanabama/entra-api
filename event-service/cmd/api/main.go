@@ -40,12 +40,12 @@ func main() {
 
 	// Initialize layers
 	queries := db.New(pool)
-	eventService := service.NewEventService(queries)
 	venueService := service.NewVenueService(queries)
-
-	eventHandler := handler.NewEventHandler(eventService)
 	venueHandler := handler.NewVenueHandler(venueService)
+	eventService := service.NewEventService(queries)
+	eventHandler := handler.NewEventHandler(eventService)
 	categoryHandler := handler.NewCategoryHandler(queries)
+	internalTicketHandler := handler.NewInternalTicketHandler(queries)
 
 	// Setup Gin
 	gin.SetMode(gin.ReleaseMode)
@@ -54,7 +54,8 @@ func main() {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
-	handler.RegisterRoutes(r, eventHandler, venueHandler, categoryHandler, cfg.JWT.Secret)
+	// Register routes
+	handler.RegisterRoutes(r, eventHandler, venueHandler, categoryHandler, internalTicketHandler, cfg.JWT.Secret)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,

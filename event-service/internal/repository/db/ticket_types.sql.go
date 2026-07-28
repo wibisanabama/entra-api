@@ -84,3 +84,10 @@ func (q *Queries) IncrementTicketSold(ctx context.Context, id uuid.UUID, amount 
 	err := row.Scan(&i.ID, &i.EventID, &i.Name, &i.Description, &i.Price, &i.Quantity, &i.Sold, &i.MaxPerOrder, &i.SaleStart, &i.SaleEnd, &i.IsActive, &i.CreatedAt, &i.UpdatedAt)
 	return i, err
 }
+
+func (q *Queries) DecrementTicketSold(ctx context.Context, id uuid.UUID, amount int32) (TicketType, error) {
+	row := q.db.QueryRow(ctx, `UPDATE ticket_types SET sold = sold - $2, updated_at = NOW() WHERE id = $1 AND sold >= $2 RETURNING id, event_id, name, description, price, quantity, sold, max_per_order, sale_start, sale_end, is_active, created_at, updated_at`, id, amount)
+	var i TicketType
+	err := row.Scan(&i.ID, &i.EventID, &i.Name, &i.Description, &i.Price, &i.Quantity, &i.Sold, &i.MaxPerOrder, &i.SaleStart, &i.SaleEnd, &i.IsActive, &i.CreatedAt, &i.UpdatedAt)
+	return i, err
+}
