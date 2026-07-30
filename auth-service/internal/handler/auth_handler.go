@@ -159,6 +159,48 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	response.Success(c, http.StatusOK, "logged out successfully", nil)
 }
 
+// ForgotPassword handles requesting a password reset token.
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req service.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	token, err := h.authService.ForgotPassword(c.Request.Context(), req.Email)
+	if err != nil {
+		response.InternalError(c, "failed to process forgot password request")
+		return
+	}
+
+	// In a real application, we would send an email here instead of returning the token directly.
+	// For testing/development, we return the token in the response.
+	response.Success(c, http.StatusOK, "If the email is registered, a reset link will be sent.", gin.H{
+		"reset_token": token,
+	})
+}
+
+// ResetPassword handles resetting a password using a token.
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req service.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	err := h.authService.ResetPassword(c.Request.Context(), req.Token, req.NewPassword)
+	if err != nil {
+		if err.Error() == "invalid or expired reset token" {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		response.InternalError(c, "failed to reset password")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "password reset successfully", nil)
+}
+
 func sanitizeUser(user *db.User) gin.H {
 	return gin.H{
 		"id":          user.ID,

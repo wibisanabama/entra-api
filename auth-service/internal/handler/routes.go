@@ -21,6 +21,8 @@ func RegisterRoutes(r *gin.Engine, h *AuthHandler, jwtSecret string) {
 		auth.POST("/register", h.Register)
 		auth.POST("/login", h.Login)
 		auth.POST("/refresh", h.RefreshToken)
+		auth.POST("/forgot-password", h.ForgotPassword)
+		auth.POST("/reset-password", h.ResetPassword)
 	}
 
 	// Protected auth routes

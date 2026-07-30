@@ -52,6 +52,17 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+// ForgotPasswordRequest holds the data for requesting a password reset.
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResetPasswordRequest holds the data for resetting a password.
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
 // UpdateProfileRequest holds the data needed to update a user's profile.
 type UpdateProfileRequest struct {
 	FullName  string `json:"full_name" binding:"required,min=2"`
@@ -167,7 +178,7 @@ func (s *AuthService) GetProfile(ctx context.Context, userID string) (*db.User, 
 		return nil, ErrUserNotFound
 	}
 
-	user, err := s.queries.GetUserByID(ctx, uid)
+	user, err := s.queries.GetUserByID(ctx, pgUUIDFromUUID(uid))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -186,7 +197,7 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID string, req Upda
 	}
 
 	user, err := s.queries.UpdateUserProfile(ctx, db.UpdateUserProfileParams{
-		ID:        uid,
+		ID:        pgUUIDFromUUID(uid),
 		FullName:  req.FullName,
 		Phone:     pgTextFromString(req.Phone),
 		AvatarUrl: pgTextFromString(req.AvatarURL),
@@ -238,7 +249,7 @@ func (s *AuthService) generateTokenPair(ctx context.Context, user *db.User, user
 		Token:     refreshTokenString,
 		UserAgent: pgTextFromString(userAgent),
 		IpAddress: pgTextFromString(ipAddress),
-		ExpiresAt: now.Add(s.cfg.JWT.RefreshExpiry),
+		ExpiresAt: pgTimestamptzFromTime(now.Add(s.cfg.JWT.RefreshExpiry)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
@@ -247,7 +258,7 @@ func (s *AuthService) generateTokenPair(ctx context.Context, user *db.User, user
 	return &TokenPair{
 		AccessToken:  accessTokenString,
 		RefreshToken: refreshTokenString,
-		ExpiresAt:    expiresAt.Unix(),
+		ExpiresAt:    pgTimestamptzFromTime(expiresAt).Time.Unix(),
 	}, nil
 }
 
@@ -257,4 +268,73 @@ func pgTextFromString(s string) pgtype.Text {
 		return pgtype.Text{Valid: false}
 	}
 	return pgtype.Text{String: s, Valid: true}
+}
+
+func pgUUIDFromUUID(u uuid.UUID) pgtype.UUID {
+	return pgtype.UUID{Bytes: u, Valid: true}
+}
+
+func pgTimestamptzFromTime(t time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: t, Valid: true}
+}
+
+// ForgotPassword creates a reset token and returns it.
+func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string, error) {
+	user, err := s.queries.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil // don't expose if user exists or not in a real app, but for now we can just return empty
+		}
+		return "", fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Generate simple token (UUID)
+	token := uuid.New().String()
+	
+	// Set expiry to 30 mins
+	expiresAt := time.Now().Add(30 * time.Minute)
+
+	_, err = s.queries.CreatePasswordResetToken(ctx, db.CreatePasswordResetTokenParams{
+		UserID:    user.ID,
+		Token:     token,
+		ExpiresAt: pgTimestamptzFromTime(expiresAt),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create reset token: %w", err)
+	}
+
+	return token, nil
+}
+
+// ResetPassword validates the token and updates the password.
+func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
+	resetToken, err := s.queries.GetPasswordResetToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.New("invalid or expired reset token")
+		}
+		return fmt.Errorf("failed to get reset token: %w", err)
+	}
+
+	if resetToken.ExpiresAt.Time.Before(time.Now()) {
+		return errors.New("invalid or expired reset token")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	err = s.queries.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:           resetToken.UserID,
+		PasswordHash: string(hashedPassword),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Delete token
+	_ = s.queries.DeletePasswordResetToken(ctx, token)
+
+	return nil
 }
