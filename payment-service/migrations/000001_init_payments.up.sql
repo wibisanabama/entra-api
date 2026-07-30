@@ -12,4 +12,4 @@ CREATE TABLE payments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_payments_order_id ON payments(order_id);
+CREATE INDEX idx_payments_reference_id ON payments(reference_id);
