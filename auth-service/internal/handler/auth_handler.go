@@ -214,3 +214,20 @@ func sanitizeUser(user *db.User) gin.H {
 		"updated_at":  user.UpdatedAt,
 	}
 }
+
+// UpgradeToOrganizer handles the role upgrade request.
+func (h *AuthHandler) UpgradeToOrganizer(c *gin.Context) {
+	userID, _ := c.Get(middleware.AuthUserIDKey)
+	
+	err := h.authService.UpgradeToOrganizer(c.Request.Context(), userID.(string))
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.NotFound(c, "user not found")
+			return
+		}
+		response.InternalError(c, "failed to upgrade role")
+		return
+	}
+	
+	response.Success(c, http.StatusOK, "role upgraded to organizer successfully", nil)
+}

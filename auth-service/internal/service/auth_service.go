@@ -212,6 +212,24 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID string, req Upda
 	return &user, nil
 }
 
+// UpgradeToOrganizer changes a user's role to organizer.
+func (s *AuthService) UpgradeToOrganizer(ctx context.Context, userID string) error {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	err = s.queries.UpdateUserRole(ctx, db.UpdateUserRoleParams{
+		ID:   pgUUIDFromUUID(uid),
+		Role: "organizer",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upgrade role: %w", err)
+	}
+
+	return nil
+}
+
 // Logout deletes the refresh token.
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	return s.queries.DeleteRefreshToken(ctx, refreshToken)
