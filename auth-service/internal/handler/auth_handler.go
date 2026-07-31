@@ -2,10 +2,13 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/smtp"
 
 	"entra-api/auth-service/internal/repository/db"
 	"entra-api/auth-service/internal/service"
+	"entra-api/shared/config"
 	"entra-api/shared/middleware"
 	"entra-api/shared/response"
 
@@ -15,11 +18,12 @@ import (
 // AuthHandler handles authentication HTTP requests.
 type AuthHandler struct {
 	authService *service.AuthService
+	smtpConfig  config.SMTPConfig
 }
 
 // NewAuthHandler creates a new AuthHandler.
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService *service.AuthService, smtpConfig config.SMTPConfig) *AuthHandler {
+	return &AuthHandler{authService: authService, smtpConfig: smtpConfig}
 }
 
 // Register handles user registration.
@@ -173,11 +177,41 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// In a real application, we would send an email here instead of returning the token directly.
-	// For testing/development, we return the token in the response.
-	response.Success(c, http.StatusOK, "If the email is registered, a reset link will be sent.", gin.H{
-		"reset_token": token,
-	})
+	// Send an email instead of returning the token directly.
+	if h.smtpConfig.Host != "" {
+		resetURL := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)
+		subject := "Subject: Reset Password Anda\r\n"
+		mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
+		body := fmt.Sprintf(`<html>
+			<body>
+				<h2>Reset Password</h2>
+				<p>Seseorang telah meminta untuk mereset password akun Anda di Entra.</p>
+				<p>Silakan klik tautan di bawah ini untuk mereset password Anda:</p>
+				<p><a href="%s">Reset Password</a></p>
+				<p>Jika Anda tidak meminta reset password, Anda dapat mengabaikan email ini.</p>
+			</body>
+		</html>`, resetURL)
+		
+		msg := []byte(subject + mime + body)
+		
+		// If username/password is empty, it might be a local test server without auth
+		var auth smtp.Auth
+		if h.smtpConfig.Username != "" {
+			auth = smtp.PlainAuth("", h.smtpConfig.Username, h.smtpConfig.Password, h.smtpConfig.Host)
+		}
+		
+		addr := fmt.Sprintf("%s:%s", h.smtpConfig.Host, h.smtpConfig.Port)
+		
+		// Run in background so it doesn't block response
+		go func() {
+			err := smtp.SendMail(addr, auth, "noreply@entra.local", []string{req.Email}, msg)
+			if err != nil {
+				fmt.Printf("Error sending email: %v\n", err)
+			}
+		}()
+	}
+
+	response.Success(c, http.StatusOK, "Tautan reset password telah dikirim ke email Anda.", nil)
 }
 
 // ResetPassword handles resetting a password using a token.

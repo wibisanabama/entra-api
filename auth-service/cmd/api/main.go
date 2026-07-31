@@ -17,6 +17,7 @@ import (
 	"entra-api/shared/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -25,6 +26,9 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
+
+	// Load .env file if exists
+	_ = godotenv.Load()
 
 	// Load config
 	cfg := config.Load()
@@ -46,7 +50,7 @@ func main() {
 	// Initialize layers
 	queries := db.New(pool)
 	authService := service.NewAuthService(queries, cfg)
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, cfg.SMTP)
 
 	// Setup Gin
 	gin.SetMode(gin.ReleaseMode)

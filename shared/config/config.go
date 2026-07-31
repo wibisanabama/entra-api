@@ -12,6 +12,7 @@ type Config struct {
 	Redis    RedisConfig
 	Kafka    KafkaConfig
 	JWT      JWTConfig
+	SMTP     SMTPConfig
 }
 
 // ServerConfig holds server-specific configuration.
@@ -46,6 +47,14 @@ type JWTConfig struct {
 	Secret        string
 	AccessExpiry  time.Duration
 	RefreshExpiry time.Duration
+}
+
+// SMTPConfig holds email server configuration.
+type SMTPConfig struct {
+	Host     string
+	Port     string
+	Username string
+	Password string
 }
 
 // DSN returns the PostgreSQL connection string.
@@ -84,6 +93,12 @@ func Load() *Config {
 			Secret:        getEnv("JWT_SECRET", "change-me-to-a-strong-secret-key"),
 			AccessExpiry:  accessExpiry,
 			RefreshExpiry: refreshExpiry,
+		},
+		SMTP: SMTPConfig{
+			Host:     getEnv("SMTP_HOST", "sandbox.smtp.mailtrap.io"),
+			Port:     getEnv("SMTP_PORT", "2525"),
+			Username: getEnv("SMTP_USER", ""),
+			Password: getEnv("SMTP_PASS", ""),
 		},
 	}
 }
