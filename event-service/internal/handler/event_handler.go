@@ -54,6 +54,22 @@ func (h *EventHandler) Get(c *gin.Context) {
 	response.Success(c, http.StatusOK, "event retrieved", event)
 }
 
+func (h *EventHandler) ListTickets(c *gin.Context) {
+	eventID := c.Param("id")
+
+	tickets, err := h.eventService.ListTicketTypesForEvent(c.Request.Context(), eventID)
+	if err != nil {
+		if errors.Is(err, service.ErrEventNotFound) {
+			response.NotFound(c, "event not found")
+			return
+		}
+		response.InternalError(c, "failed to get tickets")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "tickets retrieved", tickets)
+}
+
 func (h *EventHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
@@ -68,6 +84,28 @@ func (h *EventHandler) List(c *gin.Context) {
 	events, total, err := h.eventService.ListEvents(c.Request.Context(), page, perPage)
 	if err != nil {
 		response.InternalError(c, "failed to list events")
+		return
+	}
+
+	meta := response.NewMeta(page, perPage, total)
+	response.SuccessWithPagination(c, "events retrieved", events, meta)
+}
+
+func (h *EventHandler) ListByOrganizer(c *gin.Context) {
+	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 10
+	}
+
+	events, total, err := h.eventService.ListEventsByOrganizer(c.Request.Context(), organizerID.(string), page, perPage)
+	if err != nil {
+		response.InternalError(c, "failed to list organizer events")
 		return
 	}
 
@@ -130,3 +168,17 @@ func (h *EventHandler) Search(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "search results", events)
 }
+
+
+func (h *EventHandler) GetInternalEventIDs(c *gin.Context) {
+	organizerID := c.Param("id")
+
+	eventIDs, err := h.eventService.GetEventIDsByOrganizer(c.Request.Context(), organizerID)
+	if err != nil {
+		response.InternalError(c, "failed to get event IDs")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "event IDs retrieved", eventIDs)
+}
+

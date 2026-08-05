@@ -7,7 +7,6 @@ import (
 
 	"entra-api/event-service/internal/repository/db"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -47,8 +46,8 @@ func NewVenueService(queries *db.Queries) *VenueService {
 }
 
 func (s *VenueService) CreateVenue(ctx context.Context, organizerID string, req CreateVenueRequest) (*db.Venue, error) {
-	orgUUID, err := uuid.Parse(organizerID)
-	if err != nil {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
 		return nil, ErrUnauthorized
 	}
 
@@ -58,7 +57,7 @@ func (s *VenueService) CreateVenue(ctx context.Context, organizerID string, req 
 	}
 
 	venue, err := s.queries.CreateVenue(ctx, db.CreateVenueParams{
-		OrganizerID: orgUUID,
+		OrganizerID: pgOrgUUID,
 		Name:        req.Name,
 		Address:     req.Address,
 		City:        req.City,
@@ -77,12 +76,12 @@ func (s *VenueService) CreateVenue(ctx context.Context, organizerID string, req 
 }
 
 func (s *VenueService) GetVenue(ctx context.Context, venueID string) (*db.Venue, error) {
-	id, err := uuid.Parse(venueID)
-	if err != nil {
+	pgID := pgUUIDFromString(venueID)
+	if !pgID.Valid {
 		return nil, ErrVenueNotFound
 	}
 
-	venue, err := s.queries.GetVenueByID(ctx, id)
+	venue, err := s.queries.GetVenueByID(ctx, pgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrVenueNotFound
@@ -96,7 +95,10 @@ func (s *VenueService) GetVenue(ctx context.Context, venueID string) (*db.Venue,
 func (s *VenueService) ListVenues(ctx context.Context, page, perPage int) ([]db.Venue, int64, error) {
 	offset := (page - 1) * perPage
 
-	venues, err := s.queries.ListVenues(ctx, int32(perPage), int32(offset))
+	venues, err := s.queries.ListVenues(ctx, db.ListVenuesParams{
+		Limit:  int32(perPage),
+		Offset: int32(offset),
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list venues: %w", err)
 	}
@@ -110,12 +112,12 @@ func (s *VenueService) ListVenues(ctx context.Context, page, perPage int) ([]db.
 }
 
 func (s *VenueService) UpdateVenue(ctx context.Context, venueID, organizerID string, req UpdateVenueRequest) (*db.Venue, error) {
-	id, err := uuid.Parse(venueID)
-	if err != nil {
+	pgID := pgUUIDFromString(venueID)
+	if !pgID.Valid {
 		return nil, ErrVenueNotFound
 	}
-	orgUUID, err := uuid.Parse(organizerID)
-	if err != nil {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
 		return nil, ErrUnauthorized
 	}
 
@@ -125,7 +127,7 @@ func (s *VenueService) UpdateVenue(ctx context.Context, venueID, organizerID str
 	}
 
 	venue, err := s.queries.UpdateVenue(ctx, db.UpdateVenueParams{
-		ID:          id,
+		ID:          pgID,
 		Name:        req.Name,
 		Address:     req.Address,
 		City:        req.City,
@@ -135,7 +137,7 @@ func (s *VenueService) UpdateVenue(ctx context.Context, venueID, organizerID str
 		Longitude:   pgNumericFromFloat(req.Longitude),
 		Capacity:    pgInt4FromInt32(req.Capacity),
 		Description: pgTextFromString(req.Description),
-		OrganizerID: orgUUID,
+		OrganizerID: pgOrgUUID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -148,16 +150,20 @@ func (s *VenueService) UpdateVenue(ctx context.Context, venueID, organizerID str
 }
 
 func (s *VenueService) DeleteVenue(ctx context.Context, venueID, organizerID string) error {
-	id, err := uuid.Parse(venueID)
-	if err != nil {
+	pgID := pgUUIDFromString(venueID)
+	if !pgID.Valid {
 		return ErrVenueNotFound
 	}
-	orgUUID, err := uuid.Parse(organizerID)
-	if err != nil {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
 		return ErrUnauthorized
 	}
 
-	return s.queries.DeleteVenue(ctx, id, orgUUID)
+	err := s.queries.DeleteVenue(ctx, db.DeleteVenueParams{
+		ID:          pgID,
+		OrganizerID: pgOrgUUID,
+	})
+	return err
 }
 
 func pgNumericFromFloat(f float64) pgtype.Numeric {

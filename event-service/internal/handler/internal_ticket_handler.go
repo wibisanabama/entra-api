@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type InternalTicketHandler struct {
@@ -39,7 +40,11 @@ func (h *InternalTicketHandler) ReserveTickets(c *gin.Context) {
 
 	// In a real app we might want to do this in a transaction if reserving multiple ticket types,
 	// but here we reserve one type at a time.
-	ticket, err := h.queries.IncrementTicketSold(c.Request.Context(), ticketTypeID, req.Quantity)
+	pgID := pgtype.UUID{Bytes: ticketTypeID, Valid: true}
+	ticket, err := h.queries.IncrementTicketSold(c.Request.Context(), db.IncrementTicketSoldParams{
+		ID:   pgID,
+		Sold: int32(req.Quantity),
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			response.Error(c, http.StatusConflict, "insufficient ticket inventory or invalid ticket type")
@@ -65,7 +70,11 @@ func (h *InternalTicketHandler) ReleaseTickets(c *gin.Context) {
 		return
 	}
 
-	ticket, err := h.queries.DecrementTicketSold(c.Request.Context(), ticketTypeID, req.Quantity)
+	pgID := pgtype.UUID{Bytes: ticketTypeID, Valid: true}
+	ticket, err := h.queries.DecrementTicketSold(c.Request.Context(), db.DecrementTicketSoldParams{
+		ID:   pgID,
+		Sold: int32(req.Quantity),
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			response.Error(c, http.StatusConflict, "cannot release more tickets than sold or invalid ticket type")

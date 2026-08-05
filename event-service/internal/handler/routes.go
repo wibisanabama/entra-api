@@ -19,11 +19,13 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 	{
 		internal.POST("/tickets/:id/reserve", ith.ReserveTickets)
 		internal.POST("/tickets/:id/release", ith.ReleaseTickets)
+		internal.GET("/organizer/:id/events", eh.GetInternalEventIDs)
 	}
 
 	// Public routes
 	api.GET("/events", eh.List)
 	api.GET("/events/:id", eh.Get)
+	api.GET("/events/:id/tickets", eh.ListTickets)
 	api.GET("/events/search", eh.Search)
 	api.GET("/categories", ch.List)
 	api.GET("/venues", vh.List)
@@ -33,6 +35,7 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 	protected := api.Group("")
 	protected.Use(middleware.JWTAuth(jwtSecret))
 	{
+		protected.GET("/organizer/events", eh.ListByOrganizer)
 		protected.POST("/events", eh.Create)
 		protected.PUT("/events/:id", eh.Update)
 		protected.DELETE("/events/:id", eh.Delete)

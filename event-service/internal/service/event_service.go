@@ -59,8 +59,8 @@ func NewEventService(queries *db.Queries, redisClient *redis.Client) *EventServi
 }
 
 func (s *EventService) CreateEvent(ctx context.Context, organizerID string, req CreateEventRequest) (*db.Event, error) {
-	orgUUID, err := uuid.Parse(organizerID)
-	if err != nil {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
 		return nil, ErrUnauthorized
 	}
 
@@ -76,7 +76,7 @@ func (s *EventService) CreateEvent(ctx context.Context, organizerID string, req 
 	slug := generateSlug(req.Title)
 
 	event, err := s.queries.CreateEvent(ctx, db.CreateEventParams{
-		OrganizerID:  orgUUID,
+		OrganizerID:  pgOrgUUID,
 		VenueID:      pgUUIDFromString(req.VenueID),
 		CategoryID:   pgUUIDFromString(req.CategoryID),
 		Title:        req.Title,
@@ -98,8 +98,8 @@ func (s *EventService) CreateEvent(ctx context.Context, organizerID string, req 
 }
 
 func (s *EventService) GetEvent(ctx context.Context, eventID string) (*db.Event, error) {
-	id, err := uuid.Parse(eventID)
-	if err != nil {
+	pgID := pgUUIDFromString(eventID)
+	if !pgID.Valid {
 		return nil, ErrEventNotFound
 	}
 
@@ -115,7 +115,7 @@ func (s *EventService) GetEvent(ctx context.Context, eventID string) (*db.Event,
 		}
 	}
 
-	event, err := s.queries.GetEventByID(ctx, id)
+	event, err := s.queries.GetEventByID(ctx, pgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrEventNotFound
@@ -152,7 +152,10 @@ func (s *EventService) ListEvents(ctx context.Context, page, perPage int) ([]db.
 
 	offset := (page - 1) * perPage
 
-	events, err := s.queries.ListEvents(ctx, int32(perPage), int32(offset))
+	events, err := s.queries.ListEvents(ctx, db.ListEventsParams{
+		Limit:  int32(perPage),
+		Offset: int32(offset),
+	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list events: %w", err)
 	}
@@ -171,13 +174,28 @@ func (s *EventService) ListEvents(ctx context.Context, page, perPage int) ([]db.
 	return events, total, nil
 }
 
-func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID string, req UpdateEventRequest) (*db.Event, error) {
-	id, err := uuid.Parse(eventID)
-	if err != nil {
+
+
+func (s *EventService) ListTicketTypesForEvent(ctx context.Context, eventID string) ([]db.TicketType, error) {
+	pgID := pgUUIDFromString(eventID)
+	if !pgID.Valid {
 		return nil, ErrEventNotFound
 	}
-	orgUUID, err := uuid.Parse(organizerID)
+
+	tickets, err := s.queries.ListTicketTypesByEvent(ctx, pgID)
 	if err != nil {
+		return nil, fmt.Errorf("failed to get ticket types: %w", err)
+	}
+	return tickets, nil
+}
+
+func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID string, req UpdateEventRequest) (*db.Event, error) {
+	pgID := pgUUIDFromString(eventID)
+	if !pgID.Valid {
+		return nil, ErrEventNotFound
+	}
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
 		return nil, ErrUnauthorized
 	}
 
@@ -198,7 +216,7 @@ func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID str
 	slug := generateSlug(req.Title)
 
 	event, err := s.queries.UpdateEvent(ctx, db.UpdateEventParams{
-		ID:           id,
+		ID:           pgID,
 		VenueID:      pgUUIDFromString(req.VenueID),
 		CategoryID:   pgUUIDFromString(req.CategoryID),
 		Title:        req.Title,
@@ -211,7 +229,7 @@ func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID str
 		IsOnline:     req.IsOnline,
 		OnlineUrl:    pgTextFromString(req.OnlineURL),
 		MaxAttendees: pgInt4FromInt32(req.MaxAttendees),
-		OrganizerID:  orgUUID,
+		OrganizerID:  pgOrgUUID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -222,7 +240,7 @@ func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID str
 
 	// Invalidate Cache
 	if s.redisClient != nil {
-		cacheKey := fmt.Sprintf("event:%s", id.String())
+		cacheKey := fmt.Sprintf("event:%s", eventID)
 		s.redisClient.Del(ctx, cacheKey)
 	}
 
@@ -230,18 +248,21 @@ func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID str
 }
 
 func (s *EventService) DeleteEvent(ctx context.Context, eventID, organizerID string) error {
-	id, err := uuid.Parse(eventID)
-	if err != nil {
+	pgID := pgUUIDFromString(eventID)
+	if !pgID.Valid {
 		return ErrEventNotFound
 	}
-	orgUUID, err := uuid.Parse(organizerID)
-	if err != nil {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
 		return ErrUnauthorized
 	}
 
-	err = s.queries.DeleteEvent(ctx, id, orgUUID)
+	err := s.queries.DeleteEvent(ctx, db.DeleteEventParams{
+		ID:          pgID,
+		OrganizerID: pgOrgUUID,
+	})
 	if err == nil && s.redisClient != nil {
-		cacheKey := fmt.Sprintf("event:%s", id.String())
+		cacheKey := fmt.Sprintf("event:%s", eventID)
 		s.redisClient.Del(ctx, cacheKey)
 	}
 
@@ -250,7 +271,53 @@ func (s *EventService) DeleteEvent(ctx context.Context, eventID, organizerID str
 
 func (s *EventService) SearchEvents(ctx context.Context, query string, page, perPage int) ([]db.Event, error) {
 	offset := (page - 1) * perPage
-	return s.queries.SearchEvents(ctx, query, int32(perPage), int32(offset))
+	return s.queries.SearchEvents(ctx, db.SearchEventsParams{
+		Column1: pgTextFromString("%" + query + "%"), // assuming ilike is handled in sql
+		Limit:   int32(perPage),
+		Offset:  int32(offset),
+	})
+}
+
+func (s *EventService) GetEventIDsByOrganizer(ctx context.Context, organizerID string) ([]string, error) {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
+		return nil, ErrUnauthorized
+	}
+
+	ids, err := s.queries.ListEventIDsByOrganizer(ctx, pgOrgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list event IDs: %w", err)
+	}
+
+	var result []string
+	for _, id := range ids {
+		result = append(result, id.String())
+	}
+	return result, nil
+}
+
+func (s *EventService) ListEventsByOrganizer(ctx context.Context, organizerID string, page, perPage int) ([]db.Event, int64, error) {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
+		return nil, 0, ErrUnauthorized
+	}
+
+	offset := (page - 1) * perPage
+	events, err := s.queries.ListEventsByOrganizer(ctx, db.ListEventsByOrganizerParams{
+		OrganizerID: pgOrgUUID,
+		Limit:       int32(perPage),
+		Offset:      int32(offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list events: %w", err)
+	}
+
+	total, err := s.queries.CountEventsByOrganizer(ctx, pgOrgUUID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count events: %w", err)
+	}
+
+	return events, total, nil
 }
 
 // Helper functions

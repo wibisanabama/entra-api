@@ -58,3 +58,6 @@ WHERE status = 'published'
   AND (title ILIKE '%' || $1 || '%' OR description ILIKE '%' || $1 || '%')
 ORDER BY start_date ASC
 LIMIT $2 OFFSET $3;
+
+-- name: ListEventIDsByOrganizer :many
+SELECT id FROM events WHERE organizer_id = $1;
