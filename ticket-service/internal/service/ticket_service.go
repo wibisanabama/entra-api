@@ -118,7 +118,10 @@ func (s *TicketService) HandlePaymentSuccess(ctx context.Context, orderID string
 	}
 
 	// Update order
-	_, err = s.queries.UpdateOrderStatus(ctx, oid, "PAID")
+	_, err = s.queries.UpdateOrderStatus(ctx, db.UpdateOrderStatusParams{
+		ID:     oid,
+		Status: "PAID",
+	})
 	if err != nil {
 		return err
 	}
@@ -164,7 +167,10 @@ func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 		return err
 	}
 
-	_, err = s.queries.UpdateOrderStatus(ctx, oid, "CANCELLED")
+	_, err = s.queries.UpdateOrderStatus(ctx, db.UpdateOrderStatusParams{
+		ID:     oid,
+		Status: "CANCELLED",
+	})
 	if err != nil {
 		return err
 	}
@@ -192,4 +198,31 @@ func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 func (s *TicketService) HandlePaymentFailed(ctx context.Context, orderID string) error {
 	slog.Info("handling payment failed, cancelling order", "order_id", orderID)
 	return s.CancelOrder(ctx, orderID)
+}
+
+func (s *TicketService) ListMyTickets(ctx context.Context, userID string) ([]db.Ticket, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, errors.New("invalid user id")
+	}
+
+	// Just limit to 100 for now
+	return s.queries.ListTicketsByUser(ctx, db.ListTicketsByUserParams{
+		UserID: uid,
+		Limit:  100,
+		Offset: 0,
+	})
+}
+
+func (s *TicketService) ListMyOrders(ctx context.Context, userID string) ([]db.Order, error) {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, errors.New("invalid user id")
+	}
+
+	return s.queries.ListOrdersByUser(ctx, db.ListOrdersByUserParams{
+		UserID: uid,
+		Limit:  100,
+		Offset: 0,
+	})
 }

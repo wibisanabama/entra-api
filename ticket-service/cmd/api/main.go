@@ -51,12 +51,14 @@ func main() {
 	}
 
 	// Internal Clients
-	eventClient := client.NewEventClient("http://event-service:8082")
+	eventServiceURL := getEnv("EVENT_SERVICE_URL", "http://localhost:8082")
+	eventClient := client.NewEventClient(eventServiceURL)
 
 	// Layers
 	queries := db.New(pool)
 	ticketService := service.NewTicketService(queries, eventClient, producer)
 	orderHandler := handler.NewOrderHandler(ticketService)
+	ticketHandler := handler.NewTicketHandler(ticketService)
 
 	// Kafka Consumer for Payments
 	paymentConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "ticket-service-group", logger)
@@ -102,7 +104,7 @@ func main() {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
-	handler.RegisterRoutes(r, orderHandler, cfg.JWT.Secret)
+	handler.RegisterRoutes(r, orderHandler, ticketHandler, cfg.JWT.Secret)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,

@@ -22,3 +22,17 @@ RETURNING *;
 
 -- name: ListOrderItems :many
 SELECT * FROM order_items WHERE order_id = $1;
+
+-- name: GetOrganizerStats :one
+SELECT 
+    COALESCE(COUNT(DISTINCT id), 0)::bigint as total_orders,
+    COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
+    COALESCE(SUM((SELECT SUM(quantity) FROM order_items WHERE order_items.order_id = orders.id)), 0)::bigint as tickets_sold
+FROM orders 
+WHERE event_id = ANY($1::uuid[]) AND status = 'SUKSES';
+
+-- name: ListOrdersByEvents :many
+SELECT * FROM orders 
+WHERE event_id = ANY($1::uuid[])
+ORDER BY created_at DESC 
+LIMIT $2 OFFSET $3;

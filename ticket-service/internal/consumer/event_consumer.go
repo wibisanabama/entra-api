@@ -27,7 +27,10 @@ func (c *EventConsumer) HandleMessage(ctx context.Context, message *sarama.Consu
 				// Mark ticket as USED
 				ticket, err := c.queries.GetTicketByCode(ctx, ticketCode)
 				if err == nil {
-					_, _ = c.queries.UpdateTicketStatus(ctx, ticket.ID, "USED")
+					_, _ = c.queries.UpdateTicketStatus(ctx, db.UpdateTicketStatusParams{
+						ID:     ticket.ID,
+						Status: "USED",
+					})
 					slog.Info("ticket marked as USED centrally", "ticket_code", ticketCode)
 				} else {
 					slog.Error("failed to find ticket by code", "ticket_code", ticketCode, "error", err)

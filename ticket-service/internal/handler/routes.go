@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(r *gin.Engine, oh *OrderHandler, jwtSecret string) {
+func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, jwtSecret string) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "ticket-service"})
 	})
@@ -16,5 +16,11 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, jwtSecret string) {
 	protected.Use(middleware.JWTAuth(jwtSecret))
 	{
 		protected.POST("/orders", oh.CreateOrder)
+		protected.GET("/orders", oh.ListMyOrders)
+		protected.POST("/orders/:id/pay", oh.SimulatePayment)
+		protected.GET("", th.ListMyTickets)
+		protected.GET("/", th.ListMyTickets)
+		protected.GET("/organizer/stats", oh.GetOrganizerStats)
+		protected.GET("/organizer/orders", oh.ListOrganizerOrders)
 	}
 }
