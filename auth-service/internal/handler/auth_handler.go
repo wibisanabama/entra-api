@@ -204,7 +204,11 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		
 		// Run in background so it doesn't block response
 		go func() {
-			err := smtp.SendMail(addr, auth, "noreply@entra.local", []string{req.Email}, msg)
+			senderEmail := h.smtpConfig.Username
+			if senderEmail == "" {
+				senderEmail = "noreply@entra.local" // fallback for local testing
+			}
+			err := smtp.SendMail(addr, auth, senderEmail, []string{req.Email}, msg)
 			if err != nil {
 				fmt.Printf("Error sending email: %v\n", err)
 			}
