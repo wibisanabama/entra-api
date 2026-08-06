@@ -12,15 +12,18 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, jwtSecre
 	})
 
 	api := r.Group("/api/v1")
+	api.POST("/tickets/midtrans/webhook", oh.MidtransWebhook)
+
 	protected := api.Group("/tickets")
 	protected.Use(middleware.JWTAuth(jwtSecret))
 	{
 		protected.POST("/orders", oh.CreateOrder)
 		protected.GET("/orders", oh.ListMyOrders)
-		protected.POST("/orders/:id/pay", oh.SimulatePayment)
+		protected.POST("/orders/:id/pay", oh.CreatePaymentToken)
 		protected.GET("", th.ListMyTickets)
 		protected.GET("/", th.ListMyTickets)
 		protected.GET("/organizer/stats", oh.GetOrganizerStats)
+		protected.GET("/organizer/trend", oh.GetSalesTrend)
 		protected.GET("/organizer/orders", oh.ListOrganizerOrders)
 	}
 }

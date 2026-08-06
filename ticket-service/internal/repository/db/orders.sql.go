@@ -83,6 +83,44 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 	return i, err
 }
 
+const getDailySalesTrend = `-- name: GetDailySalesTrend :many
+SELECT 
+    DATE(created_at) as sale_date,
+    COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
+    COALESCE(SUM((SELECT SUM(quantity) FROM order_items WHERE order_items.order_id = orders.id)), 0)::bigint as tickets_sold
+FROM orders 
+WHERE event_id = ANY($1::uuid[]) AND status = 'SUKSES'
+  AND created_at >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(created_at)
+ORDER BY sale_date ASC
+`
+
+type GetDailySalesTrendRow struct {
+	SaleDate     pgtype.Date    `json:"sale_date"`
+	TotalRevenue pgtype.Numeric `json:"total_revenue"`
+	TicketsSold  int64          `json:"tickets_sold"`
+}
+
+func (q *Queries) GetDailySalesTrend(ctx context.Context, dollar_1 []uuid.UUID) ([]GetDailySalesTrendRow, error) {
+	rows, err := q.db.Query(ctx, getDailySalesTrend, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetDailySalesTrendRow{}
+	for rows.Next() {
+		var i GetDailySalesTrendRow
+		if err := rows.Scan(&i.SaleDate, &i.TotalRevenue, &i.TicketsSold); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getExpiredPendingOrders = `-- name: GetExpiredPendingOrders :many
 SELECT id, user_id, event_id, total_amount, status, expires_at, created_at, updated_at FROM orders WHERE status = 'PENDING' AND expires_at < NOW()
 `

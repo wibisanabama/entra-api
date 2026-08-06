@@ -39,7 +39,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	response.Success(c, http.StatusCreated, "order created", order)
 }
 
-func (h *OrderHandler) SimulatePayment(c *gin.Context) {
+func (h *OrderHandler) CreatePaymentToken(c *gin.Context) {
 	userID, exists := c.Get(middleware.AuthUserIDKey)
 	if !exists {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
@@ -52,16 +52,32 @@ func (h *OrderHandler) SimulatePayment(c *gin.Context) {
 		return
 	}
 
-	// Ideally check if order belongs to user here. Simplified for mock:
-	_ = userID
+	_ = userID // In a real app, verify order belongs to user
 
-	err := h.ticketService.HandlePaymentSuccess(c.Request.Context(), orderID)
+	token, err := h.ticketService.CreatePaymentToken(c.Request.Context(), orderID)
 	if err != nil {
-		response.InternalError(c, "failed to simulate payment: "+err.Error())
+		response.InternalError(c, "failed to get payment token: "+err.Error())
 		return
 	}
 
-	response.Success(c, http.StatusOK, "payment successful", gin.H{"order_id": orderID})
+	response.Success(c, http.StatusOK, "payment token generated", gin.H{"token": token})
+}
+
+func (h *OrderHandler) MidtransWebhook(c *gin.Context) {
+	var payload map[string]interface{}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.ValidationError(c, "invalid json payload")
+		return
+	}
+
+	err := h.ticketService.HandleMidtransNotification(c.Request.Context(), payload)
+	if err != nil {
+		// Log the error but return 200 to acknowledge receipt to Midtrans
+		response.Success(c, http.StatusOK, "webhook received but encountered error", nil)
+		return
+	}
+
+	response.Success(c, http.StatusOK, "webhook processed", nil)
 }
 
 func (h *OrderHandler) ListMyOrders(c *gin.Context) {
@@ -117,3 +133,19 @@ func (h *OrderHandler) ListOrganizerOrders(c *gin.Context) {
 	response.Success(c, http.StatusOK, "orders retrieved", orders)
 }
 
+
+func (h *OrderHandler) GetSalesTrend(c *gin.Context) {
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	trend, err := h.ticketService.GetSalesTrend(c.Request.Context(), organizerID.(string))
+	if err != nil {
+		response.InternalError(c, "failed to fetch sales trend: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "sales trend retrieved", trend)
+}

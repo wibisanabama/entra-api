@@ -36,3 +36,14 @@ SELECT * FROM orders
 WHERE event_id = ANY($1::uuid[])
 ORDER BY created_at DESC 
 LIMIT $2 OFFSET $3;
+
+-- name: GetDailySalesTrend :many
+SELECT 
+    DATE(created_at) as sale_date,
+    COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
+    COALESCE(SUM((SELECT SUM(quantity) FROM order_items WHERE order_items.order_id = orders.id)), 0)::bigint as tickets_sold
+FROM orders 
+WHERE event_id = ANY($1::uuid[]) AND status = 'SUKSES'
+  AND created_at >= NOW() - INTERVAL '30 days'
+GROUP BY DATE(created_at)
+ORDER BY sale_date ASC;

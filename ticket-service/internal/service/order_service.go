@@ -99,3 +99,24 @@ func (s *TicketService) ListOrganizerOrders(ctx context.Context, organizerID str
 		Offset:  int32(offset),
 	})
 }
+
+func (s *TicketService) GetSalesTrend(ctx context.Context, organizerID string) ([]db.GetDailySalesTrendRow, error) {
+	eventIDsStr, err := s.FetchOrganizerEventIDs(organizerID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(eventIDsStr) == 0 {
+		return []db.GetDailySalesTrendRow{}, nil
+	}
+
+	var eventIDs []uuid.UUID
+	for _, idStr := range eventIDsStr {
+		id, err := uuid.Parse(idStr)
+		if err == nil {
+			eventIDs = append(eventIDs, id)
+		}
+	}
+
+	return s.queries.GetDailySalesTrend(ctx, eventIDs)
+}

@@ -14,6 +14,7 @@ type Querier interface {
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error)
+	GetDailySalesTrend(ctx context.Context, dollar_1 []uuid.UUID) ([]GetDailySalesTrendRow, error)
 	GetExpiredPendingOrders(ctx context.Context) ([]Order, error)
 	GetOrder(ctx context.Context, id uuid.UUID) (Order, error)
 	GetOrganizerStats(ctx context.Context, dollar_1 []uuid.UUID) (GetOrganizerStatsRow, error)
