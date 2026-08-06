@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"entra-api/shared/kafka"
@@ -14,19 +16,37 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/midtrans/midtrans-go"
+	"github.com/midtrans/midtrans-go/coreapi"
+	"github.com/midtrans/midtrans-go/snap"
 )
 
 type TicketService struct {
 	queries     *db.Queries
 	eventClient *client.EventClient
 	producer    *kafka.Producer
+	snapClient  snap.Client
+	coreClient  coreapi.Client
 }
 
 func NewTicketService(queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer) *TicketService {
+	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
+	if serverKey == "" {
+		serverKey = "SB-Mid-server-dummy-key-for-dev-only" // Use user's key if not set in env
+	}
+
+	var sClient snap.Client
+	sClient.New(serverKey, midtrans.Sandbox)
+
+	var cClient coreapi.Client
+	cClient.New(serverKey, midtrans.Sandbox)
+
 	return &TicketService{
 		queries:     queries,
 		eventClient: eventClient,
 		producer:    producer,
+		snapClient:  sClient,
+		coreClient:  cClient,
 	}
 }
 
@@ -198,6 +218,78 @@ func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 func (s *TicketService) HandlePaymentFailed(ctx context.Context, orderID string) error {
 	slog.Info("handling payment failed, cancelling order", "order_id", orderID)
 	return s.CancelOrder(ctx, orderID)
+}
+
+func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string) (string, error) {
+	oid, err := uuid.Parse(orderID)
+	if err != nil {
+		return "", err
+	}
+
+	order, err := s.queries.GetOrder(ctx, oid)
+	if err != nil {
+		return "", err
+	}
+
+	if order.Status != "PENDING" {
+		return "", errors.New("order is not pending")
+	}
+
+	val, err := order.TotalAmount.Float64Value()
+	if err != nil {
+		return "", err
+	}
+	amount := val.Float64
+
+	midtransOrderID := fmt.Sprintf("%s_%d", order.ID.String(), time.Now().Unix())
+
+	req := &snap.Request{
+		TransactionDetails: midtrans.TransactionDetails{
+			OrderID:  midtransOrderID,
+			GrossAmt: int64(amount),
+		},
+		CreditCard: &snap.CreditCardDetails{
+			Secure: true,
+		},
+	}
+
+	snapResp, snapErr := s.snapClient.CreateTransaction(req)
+	if snapErr != nil {
+		return "", snapErr
+	}
+
+	return snapResp.Token, nil
+}
+
+func (s *TicketService) HandleMidtransNotification(ctx context.Context, payload map[string]interface{}) error {
+	rawOrderID, ok := payload["order_id"].(string)
+	if !ok {
+		return errors.New("invalid order_id in payload")
+	}
+	
+	// Extract the real order ID (before the _)
+	parts := strings.Split(rawOrderID, "_")
+	orderID := parts[0]
+    
+	tx, coreErr := s.coreClient.CheckTransaction(rawOrderID)
+	if coreErr != nil {
+		return coreErr
+	}
+
+	switch tx.TransactionStatus {
+	case "capture":
+		if tx.FraudStatus == "challenge" {
+			// Do nothing or mark as challenge
+		} else if tx.FraudStatus == "accept" {
+			return s.HandlePaymentSuccess(ctx, orderID)
+		}
+	case "settlement":
+		return s.HandlePaymentSuccess(ctx, orderID)
+	case "cancel", "deny", "expire":
+		return s.HandlePaymentFailed(ctx, orderID)
+	}
+
+	return nil
 }
 
 func (s *TicketService) ListMyTickets(ctx context.Context, userID string) ([]db.Ticket, error) {
