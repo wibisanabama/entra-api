@@ -356,3 +356,12 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 
 	return nil
 }
+
+// GetUsersByIDs fetches users in batch by their IDs.
+func (s *AuthService) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]db.GetUsersByIDsRow, error) {
+	pgIDs := make([]pgtype.UUID, len(ids))
+	for i, id := range ids {
+		pgIDs[i] = pgUUIDFromUUID(id)
+	}
+	return s.queries.GetUsersByIDs(ctx, pgIDs)
+}

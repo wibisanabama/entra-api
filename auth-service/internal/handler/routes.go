@@ -23,6 +23,13 @@ func RegisterRoutes(r *gin.Engine, h *AuthHandler, jwtSecret string) {
 		auth.POST("/refresh", h.RefreshToken)
 		auth.POST("/forgot-password", h.ForgotPassword)
 		auth.POST("/reset-password", h.ResetPassword)
+		auth.POST("/users/batch", h.GetUsersBatch)
+	}
+
+	// Public user routes
+	users := api.Group("/users")
+	{
+		users.GET("/:id", h.GetPublicProfile)
 	}
 
 	// Protected auth routes

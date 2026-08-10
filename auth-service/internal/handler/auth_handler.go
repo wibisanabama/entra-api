@@ -13,6 +13,7 @@ import (
 	"entra-api/shared/response"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // AuthHandler handles authentication HTTP requests.
@@ -122,6 +123,27 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "profile retrieved", sanitizeUser(user))
+}
+
+// GetPublicProfile handles fetching a user's public profile.
+func (h *AuthHandler) GetPublicProfile(c *gin.Context) {
+	userID := c.Param("id")
+
+	user, err := h.authService.GetProfile(c.Request.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.NotFound(c, "user not found")
+			return
+		}
+		response.InternalError(c, "failed to get profile")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "profile retrieved", gin.H{
+		"id":         user.ID,
+		"full_name":  user.FullName,
+		"avatar_url": user.AvatarUrl,
+	})
 }
 
 // UpdateProfile handles updating the current user's profile.
@@ -268,4 +290,36 @@ func (h *AuthHandler) UpgradeToOrganizer(c *gin.Context) {
 	}
 	
 	response.Success(c, http.StatusOK, "role upgraded to organizer successfully", nil)
+}
+
+// GetUsersBatchRequest represents the request body for GetUsersBatch.
+type GetUsersBatchRequest struct {
+	IDs []string `json:"ids" binding:"required"`
+}
+
+// GetUsersBatch fetches a batch of users by their IDs.
+func (h *AuthHandler) GetUsersBatch(c *gin.Context) {
+	var req GetUsersBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	var uuids []uuid.UUID
+	for _, idStr := range req.IDs {
+		u, err := uuid.Parse(idStr)
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, fmt.Sprintf("invalid uuid: %s", idStr))
+			return
+		}
+		uuids = append(uuids, u)
+	}
+
+	users, err := h.authService.GetUsersByIDs(c.Request.Context(), uuids)
+	if err != nil {
+		response.InternalError(c, "failed to fetch users")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "users retrieved", users)
 }
