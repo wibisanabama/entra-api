@@ -25,5 +25,7 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, jwtSecre
 		protected.GET("/organizer/stats", oh.GetOrganizerStats)
 		protected.GET("/organizer/trend", oh.GetSalesTrend)
 		protected.GET("/organizer/orders", oh.ListOrganizerOrders)
+		protected.GET("/organizer/orders/:id", oh.GetOrganizerOrder)
+		protected.GET("/organizer/events/:eventId/attendees", oh.GetEventAttendees)
 	}
 }

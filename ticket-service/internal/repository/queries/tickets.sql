@@ -14,3 +14,9 @@ SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSE
 
 -- name: UpdateTicketStatus :one
 UPDATE tickets SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *;
+
+-- name: ListTicketsByEvent :many
+SELECT * FROM tickets WHERE event_id = $1 ORDER BY created_at ASC;
+
+-- name: ListTicketsByOrder :many
+SELECT * FROM tickets WHERE order_id = $1 ORDER BY created_at ASC;

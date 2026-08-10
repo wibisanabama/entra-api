@@ -90,6 +90,74 @@ func (q *Queries) GetTicketByCode(ctx context.Context, ticketCode string) (Ticke
 	return i, err
 }
 
+const listTicketsByEvent = `-- name: ListTicketsByEvent :many
+SELECT id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at FROM tickets WHERE event_id = $1 ORDER BY created_at ASC
+`
+
+func (q *Queries) ListTicketsByEvent(ctx context.Context, eventID uuid.UUID) ([]Ticket, error) {
+	rows, err := q.db.Query(ctx, listTicketsByEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.UserID,
+			&i.EventID,
+			&i.TicketTypeID,
+			&i.TicketCode,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTicketsByOrder = `-- name: ListTicketsByOrder :many
+SELECT id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at FROM tickets WHERE order_id = $1 ORDER BY created_at ASC
+`
+
+func (q *Queries) ListTicketsByOrder(ctx context.Context, orderID uuid.UUID) ([]Ticket, error) {
+	rows, err := q.db.Query(ctx, listTicketsByOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.UserID,
+			&i.EventID,
+			&i.TicketTypeID,
+			&i.TicketCode,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTicketsByUser = `-- name: ListTicketsByUser :many
 SELECT id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at FROM tickets WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
 `

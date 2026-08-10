@@ -23,6 +23,8 @@ type Querier interface {
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersByEvents(ctx context.Context, arg ListOrdersByEventsParams) ([]Order, error)
 	ListOrdersByUser(ctx context.Context, arg ListOrdersByUserParams) ([]Order, error)
+	ListTicketsByEvent(ctx context.Context, eventID uuid.UUID) ([]Ticket, error)
+	ListTicketsByOrder(ctx context.Context, orderID uuid.UUID) ([]Ticket, error)
 	ListTicketsByUser(ctx context.Context, arg ListTicketsByUserParams) ([]Ticket, error)
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	UpdateTicketStatus(ctx context.Context, arg UpdateTicketStatusParams) (Ticket, error)

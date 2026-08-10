@@ -149,3 +149,41 @@ func (h *OrderHandler) GetSalesTrend(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "sales trend retrieved", trend)
 }
+
+func (h *OrderHandler) GetOrganizerOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	order, items, tickets, err := h.ticketService.GetOrganizerOrder(c.Request.Context(), orderID, organizerID.(string))
+	if err != nil {
+		response.InternalError(c, "failed to get order: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "order retrieved", gin.H{
+		"order":   order,
+		"items":   items,
+		"tickets": tickets,
+	})
+}
+
+func (h *OrderHandler) GetEventAttendees(c *gin.Context) {
+	eventID := c.Param("eventId")
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	tickets, err := h.ticketService.GetEventAttendees(c.Request.Context(), eventID, organizerID.(string))
+	if err != nil {
+		response.InternalError(c, "failed to get attendees: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "attendees retrieved", tickets)
+}

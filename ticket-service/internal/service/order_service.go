@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"entra-api/ticket-service/internal/repository/db"
@@ -13,13 +14,16 @@ import (
 )
 
 type EventResponse struct {
-	Data []struct {
-		ID string `json:"id"`
-	} `json:"data"`
+	Data []string `json:"data"`
 }
 
 func (s *TicketService) FetchOrganizerEventIDs(organizerID string) ([]string, error) {
-	url := fmt.Sprintf("http://event-service:8080/api/v1/internal/organizer/%s/events", organizerID)
+	eventServiceURL := os.Getenv("EVENT_SERVICE_URL")
+	if eventServiceURL == "" {
+		eventServiceURL = "http://localhost:8082" // default local development URL
+	}
+
+	url := fmt.Sprintf("%s/api/v1/internal/organizer/%s/events", eventServiceURL, organizerID)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -41,11 +45,7 @@ func (s *TicketService) FetchOrganizerEventIDs(organizerID string) ([]string, er
 		return nil, err
 	}
 
-	var ids []string
-	for _, event := range res.Data {
-		ids = append(ids, event.ID)
-	}
-	return ids, nil
+	return res.Data, nil
 }
 
 func (s *TicketService) GetDashboardStats(ctx context.Context, organizerID string) (*db.GetOrganizerStatsRow, error) {
@@ -119,4 +119,76 @@ func (s *TicketService) GetSalesTrend(ctx context.Context, organizerID string) (
 	}
 
 	return s.queries.GetDailySalesTrend(ctx, eventIDs)
+}
+
+func (s *TicketService) GetOrganizerOrder(ctx context.Context, orderID string, organizerID string) (*db.Order, []db.OrderItem, []db.Ticket, error) {
+	parsedOrderID, err := uuid.Parse(orderID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("invalid order id: %w", err)
+	}
+
+	order, err := s.queries.GetOrder(ctx, parsedOrderID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get order: %w", err)
+	}
+
+	eventIDsStr, err := s.FetchOrganizerEventIDs(organizerID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to fetch organizer events: %w", err)
+	}
+
+	isOwner := false
+	for _, idStr := range eventIDsStr {
+		if order.EventID.String() == idStr {
+			isOwner = true
+			break
+		}
+	}
+
+	if !isOwner {
+		return nil, nil, nil, fmt.Errorf("unauthorized to access this order")
+	}
+
+	items, err := s.queries.ListOrderItems(ctx, parsedOrderID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to list order items: %w", err)
+	}
+
+	tickets, err := s.queries.ListTicketsByOrder(ctx, parsedOrderID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to list tickets: %w", err)
+	}
+
+	return &order, items, tickets, nil
+}
+
+func (s *TicketService) GetEventAttendees(ctx context.Context, eventID string, organizerID string) ([]db.Ticket, error) {
+	parsedEventID, err := uuid.Parse(eventID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event id: %w", err)
+	}
+
+	eventIDsStr, err := s.FetchOrganizerEventIDs(organizerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch organizer events: %w", err)
+	}
+
+	isOwner := false
+	for _, idStr := range eventIDsStr {
+		if eventID == idStr {
+			isOwner = true
+			break
+		}
+	}
+
+	if !isOwner {
+		return nil, fmt.Errorf("unauthorized to access this event")
+	}
+
+	tickets, err := s.queries.ListTicketsByEvent(ctx, parsedEventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tickets: %w", err)
+	}
+
+	return tickets, nil
 }
