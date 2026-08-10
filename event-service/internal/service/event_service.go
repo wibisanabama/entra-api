@@ -33,6 +33,7 @@ type CreateEventRequest struct {
 	IsOnline     bool   `json:"is_online"`
 	OnlineURL    string `json:"online_url"`
 	MaxAttendees int32  `json:"max_attendees"`
+	Status       string `json:"status"`
 }
 
 type UpdateEventRequest struct {
@@ -47,6 +48,26 @@ type UpdateEventRequest struct {
 	IsOnline     bool   `json:"is_online"`
 	OnlineURL    string `json:"online_url"`
 	MaxAttendees int32  `json:"max_attendees"`
+}
+
+type CreateTicketTypeRequest struct {
+	Name        string  `json:"name" binding:"required"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price"`
+	Quantity    int32   `json:"quantity" binding:"required"`
+	MaxPerOrder int32   `json:"max_per_order"`
+	SaleStart   string  `json:"sale_start" binding:"required"`
+	SaleEnd     string  `json:"sale_end" binding:"required"`
+}
+
+type UpdateTicketTypeRequest struct {
+	Name        string  `json:"name" binding:"required"`
+	Description string  `json:"description"`
+	Price       float64 `json:"price"`
+	Quantity    int32   `json:"quantity" binding:"required"`
+	MaxPerOrder int32   `json:"max_per_order"`
+	SaleStart   string  `json:"sale_start" binding:"required"`
+	SaleEnd     string  `json:"sale_end" binding:"required"`
 }
 
 type EventService struct {
@@ -75,6 +96,11 @@ func (s *EventService) CreateEvent(ctx context.Context, organizerID string, req 
 
 	slug := generateSlug(req.Title)
 
+	status := req.Status
+	if status == "" {
+		status = "draft"
+	}
+
 	event, err := s.queries.CreateEvent(ctx, db.CreateEventParams{
 		OrganizerID:  pgOrgUUID,
 		VenueID:      pgUUIDFromString(req.VenueID),
@@ -85,7 +111,7 @@ func (s *EventService) CreateEvent(ctx context.Context, organizerID string, req 
 		BannerUrl:    pgTextFromString(req.BannerURL),
 		StartDate:    pgTimestamptzFromTime(startDate),
 		EndDate:      pgTimestamptzFromTime(endDate),
-		Status:       "draft",
+		Status:       status,
 		IsOnline:     req.IsOnline,
 		OnlineUrl:    pgTextFromString(req.OnlineURL),
 		MaxAttendees: pgInt4FromInt32(req.MaxAttendees),
@@ -187,6 +213,128 @@ func (s *EventService) ListTicketTypesForEvent(ctx context.Context, eventID stri
 		return nil, fmt.Errorf("failed to get ticket types: %w", err)
 	}
 	return tickets, nil
+}
+
+func (s *EventService) CreateTicketType(ctx context.Context, organizerID, eventID string, req CreateTicketTypeRequest) (*db.TicketType, error) {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	if !pgOrgUUID.Valid {
+		return nil, ErrUnauthorized
+	}
+
+	pgEventID := pgUUIDFromString(eventID)
+	if !pgEventID.Valid {
+		return nil, ErrEventNotFound
+	}
+
+	// Verify event belongs to organizer
+	event, err := s.queries.GetEventByID(ctx, pgEventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get event: %w", err)
+	}
+	if event.OrganizerID != pgOrgUUID {
+		return nil, ErrUnauthorized
+	}
+
+	saleStart, err := time.Parse(time.RFC3339, req.SaleStart)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sale_start format: %w", err)
+	}
+	saleEnd, err := time.Parse(time.RFC3339, req.SaleEnd)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sale_end format: %w", err)
+	}
+
+	var priceNumeric pgtype.Numeric
+	_ = priceNumeric.Scan(fmt.Sprintf("%f", req.Price))
+
+	ticket, err := s.queries.CreateTicketType(ctx, db.CreateTicketTypeParams{
+		EventID:     pgEventID,
+		Name:        req.Name,
+		Description: pgTextFromString(req.Description),
+		Price:       priceNumeric,
+		Quantity:    req.Quantity,
+		MaxPerOrder: pgInt4FromInt32(req.MaxPerOrder),
+		SaleStart:   pgTimestamptzFromTime(saleStart),
+		SaleEnd:     pgTimestamptzFromTime(saleEnd),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ticket type: %w", err)
+	}
+
+	return &ticket, nil
+}
+
+func (s *EventService) UpdateTicketType(ctx context.Context, organizerID, eventID, ticketID string, req UpdateTicketTypeRequest) (*db.TicketType, error) {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	pgEventID := pgUUIDFromString(eventID)
+	pgTicketID := pgUUIDFromString(ticketID)
+	
+	if !pgOrgUUID.Valid || !pgEventID.Valid || !pgTicketID.Valid {
+		return nil, ErrUnauthorized
+	}
+
+	// Verify event belongs to organizer
+	event, err := s.queries.GetEventByID(ctx, pgEventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get event: %w", err)
+	}
+	if event.OrganizerID != pgOrgUUID {
+		return nil, ErrUnauthorized
+	}
+
+	saleStart, err := time.Parse(time.RFC3339, req.SaleStart)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sale_start format: %w", err)
+	}
+	saleEnd, err := time.Parse(time.RFC3339, req.SaleEnd)
+	if err != nil {
+		return nil, fmt.Errorf("invalid sale_end format: %w", err)
+	}
+
+	var priceNumeric pgtype.Numeric
+	_ = priceNumeric.Scan(fmt.Sprintf("%f", req.Price))
+
+	ticket, err := s.queries.UpdateTicketType(ctx, db.UpdateTicketTypeParams{
+		ID:          pgTicketID,
+		Name:        req.Name,
+		Description: pgTextFromString(req.Description),
+		Price:       priceNumeric,
+		Quantity:    req.Quantity,
+		MaxPerOrder: pgInt4FromInt32(req.MaxPerOrder),
+		SaleStart:   pgTimestamptzFromTime(saleStart),
+		SaleEnd:     pgTimestamptzFromTime(saleEnd),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update ticket type: %w", err)
+	}
+
+	return &ticket, nil
+}
+
+func (s *EventService) DeleteTicketType(ctx context.Context, organizerID, eventID, ticketID string) error {
+	pgOrgUUID := pgUUIDFromString(organizerID)
+	pgEventID := pgUUIDFromString(eventID)
+	pgTicketID := pgUUIDFromString(ticketID)
+	
+	if !pgOrgUUID.Valid || !pgEventID.Valid || !pgTicketID.Valid {
+		return ErrUnauthorized
+	}
+
+	// Verify event belongs to organizer
+	event, err := s.queries.GetEventByID(ctx, pgEventID)
+	if err != nil {
+		return fmt.Errorf("failed to get event: %w", err)
+	}
+	if event.OrganizerID != pgOrgUUID {
+		return ErrUnauthorized
+	}
+
+	err = s.queries.DeleteTicketType(ctx, pgTicketID)
+	if err != nil {
+		return fmt.Errorf("failed to delete ticket type: %w", err)
+	}
+
+	return nil
 }
 
 func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID string, req UpdateEventRequest) (*db.Event, error) {

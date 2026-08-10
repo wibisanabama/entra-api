@@ -57,6 +57,7 @@ func main() {
 	eventHandler := handler.NewEventHandler(eventService)
 	categoryHandler := handler.NewCategoryHandler(queries)
 	internalTicketHandler := handler.NewInternalTicketHandler(queries)
+	ticketTypeHandler := handler.NewTicketTypeHandler(eventService)
 
 	// Setup Gin
 	gin.SetMode(gin.ReleaseMode)
@@ -66,7 +67,7 @@ func main() {
 	r.Use(middleware.Logger(logger))
 
 	// Register routes
-	handler.RegisterRoutes(r, eventHandler, venueHandler, categoryHandler, internalTicketHandler, cfg.JWT.Secret)
+	handler.RegisterRoutes(r, eventHandler, venueHandler, categoryHandler, internalTicketHandler, ticketTypeHandler, cfg.JWT.Secret)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,

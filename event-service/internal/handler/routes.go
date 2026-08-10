@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *CategoryHandler, ith *InternalTicketHandler, jwtSecret string) {
+func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *CategoryHandler, ith *InternalTicketHandler, tth *TicketTypeHandler, jwtSecret string) {
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "event-service"})
@@ -39,6 +39,10 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 		protected.POST("/events", eh.Create)
 		protected.PUT("/events/:id", eh.Update)
 		protected.DELETE("/events/:id", eh.Delete)
+
+		protected.POST("/events/:id/tickets", tth.Create)
+		protected.PUT("/events/:id/tickets/:ticket_id", tth.Update)
+		protected.DELETE("/events/:id/tickets/:ticket_id", tth.Delete)
 
 		protected.POST("/venues", vh.Create)
 		protected.PUT("/venues/:id", vh.Update)
