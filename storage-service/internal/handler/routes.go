@@ -12,6 +12,7 @@ func RegisterRoutes(r *gin.Engine, storageHandler *StorageHandler, jwtSecret str
 		storage.Use(middleware.JWTAuth(jwtSecret))
 		{
 			storage.POST("/upload", storageHandler.UploadFile)
+			storage.GET("/media", storageHandler.ListFiles)
 		}
 	}
 }

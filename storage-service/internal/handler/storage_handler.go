@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"entra-api/shared/middleware"
 	"entra-api/shared/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -54,8 +55,11 @@ func (h *StorageHandler) UploadFile(c *gin.Context) {
 	}
 	defer openedFile.Close()
 
-	// Generate unique filename
-	newFilename := uuid.New().String() + ext
+	userID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID := userID.(string)
+
+	// Generate unique filename prefixed by organizer ID
+	newFilename := fmt.Sprintf("%s/%s%s", organizerID, uuid.New().String(), ext)
 
 	ctx := context.Background()
 	
@@ -80,4 +84,43 @@ func (h *StorageHandler) UploadFile(c *gin.Context) {
 	response.Success(c, http.StatusOK, "File uploaded successfully", gin.H{
 		"url": publicURL,
 	})
+}
+
+func (h *StorageHandler) ListFiles(c *gin.Context) {
+	ctx := context.Background()
+	var images []gin.H
+
+	userID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID := userID.(string)
+	prefix := organizerID + "/"
+
+	for object := range h.minioClient.ListObjects(ctx, h.bucketName, minio.ListObjectsOptions{Prefix: prefix}) {
+		if object.Err != nil {
+			fmt.Println("Error listing object:", object.Err)
+			continue
+		}
+
+		publicURL := fmt.Sprintf("http://%s/%s/%s", h.minioEndpoint, h.bucketName, object.Key)
+		sizeKB := object.Size / 1024
+		sizeStr := fmt.Sprintf("%d KB", sizeKB)
+		if sizeKB > 1024 {
+			sizeStr = fmt.Sprintf("%.1f MB", float64(sizeKB)/1024.0)
+		}
+
+		name := strings.TrimPrefix(object.Key, prefix)
+
+		images = append(images, gin.H{
+			"id":   object.Key,
+			"url":  publicURL,
+			"name": name,
+			"size": sizeStr,
+		})
+	}
+
+    // Ensure we return an empty array instead of null if no images
+    if images == nil {
+        images = []gin.H{}
+    }
+
+	response.Success(c, http.StatusOK, "Media retrieved", images)
 }
