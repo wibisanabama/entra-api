@@ -32,7 +32,7 @@ type TicketService struct {
 func NewTicketService(queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer) *TicketService {
 	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
 	if serverKey == "" {
-		serverKey = "SB-Mid-server-dummy-key-for-dev-only" // Use user's key if not set in env
+		serverKey = "SB-Mid-server-dummy-key-for-dev-only" // Use placeholder if not set in env
 	}
 
 	var sClient snap.Client
