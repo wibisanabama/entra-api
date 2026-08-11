@@ -32,15 +32,31 @@ func (s *GateService) SyncTicket(ctx context.Context, ticketID uuid.UUID, ticket
 		Status:     status,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create local ticket: %w", err)
+		// If already exists, update status
+		_, _ = s.queries.UpdateLocalTicketStatus(ctx, db.UpdateLocalTicketStatusParams{
+			ID:     ticketID,
+			Status: status,
+		})
 	}
 	return nil
 }
 
 func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
-	ticket, err := s.queries.GetLocalTicketByCode(ctx, ticketCode)
+	var ticket db.LocalTicket
+	var err error
+
+	// 1. Try local lookup by ticket_code
+	ticket, err = s.queries.GetLocalTicketByCode(ctx, ticketCode)
+
+	// 2. Try local lookup by ID if ticketCode is a UUID
 	if err != nil {
-		// Fallback: Query ticket-service directly if ticket is not yet synced in local gate DB
+		if parsedUUID, parseErr := uuid.Parse(ticketCode); parseErr == nil {
+			ticket, err = s.queries.GetLocalTicket(ctx, parsedUUID)
+		}
+	}
+
+	// 3. Fallback: Query ticket-service directly if ticket is not yet synced in local gate DB
+	if err != nil {
 		ticketServiceURL := os.Getenv("TICKET_SERVICE_URL")
 		if ticketServiceURL == "" {
 			ticketServiceURL = "http://localhost:8083"
@@ -55,7 +71,7 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 					Status     string `json:"status"`
 				} `json:"data"`
 			}
-			if err := json.NewDecoder(resp.Body).Decode(&res); err == nil && res.Data.TicketCode != "" {
+			if errDecode := json.NewDecoder(resp.Body).Decode(&res); errDecode == nil && res.Data.ID != "" {
 				parsedID, parseErr := uuid.Parse(res.Data.ID)
 				if parseErr == nil {
 					status := res.Data.Status
@@ -63,20 +79,28 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 						status = "ACTIVE"
 					}
 					// Sync ticket to local gate DB
-					_ = s.SyncTicket(ctx, parsedID, res.Data.TicketCode, status)
-					// Retry local query
-					ticket, err = s.queries.GetLocalTicketByCode(ctx, ticketCode)
+					codeToSync := res.Data.TicketCode
+					if codeToSync == "" {
+						codeToSync = ticketCode
+					}
+					_ = s.SyncTicket(ctx, parsedID, codeToSync, status)
+
+					// Retry local query by code or ID
+					ticket, err = s.queries.GetLocalTicketByCode(ctx, codeToSync)
+					if err != nil {
+						ticket, err = s.queries.GetLocalTicket(ctx, parsedID)
+					}
 				}
 			}
 			resp.Body.Close()
 		}
 
 		if err != nil {
-			return fmt.Errorf("ticket not found: %w", err)
+			return errors.New("ticket not found")
 		}
 	}
 
-	if ticket.Status != "ACTIVE" {
+	if ticket.Status == "CHECKED_IN" || ticket.Status == "USED" {
 		return errors.New("ticket already used or invalid")
 	}
 
@@ -94,7 +118,9 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	_ = s.producer.Publish(ctx, "ticket.scanned", []byte(updatedTicket.ID.String()), payloadBytes)
+	if s.producer != nil {
+		_ = s.producer.Publish(ctx, "ticket.scanned", []byte(updatedTicket.ID.String()), payloadBytes)
+	}
 
 	return nil
 }

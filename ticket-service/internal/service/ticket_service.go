@@ -322,6 +322,12 @@ func (s *TicketService) ListMyOrders(ctx context.Context, userID string) ([]db.O
 func (s *TicketService) GetTicketByCode(ctx context.Context, ticketCode string) (*db.Ticket, error) {
 	t, err := s.queries.GetTicketByCode(ctx, ticketCode)
 	if err != nil {
+		if parsedUUID, parseErr := uuid.Parse(ticketCode); parseErr == nil {
+			tByID, errByID := s.queries.GetTicket(ctx, parsedUUID)
+			if errByID == nil {
+				return &tByID, nil
+			}
+		}
 		return nil, err
 	}
 	return &t, nil

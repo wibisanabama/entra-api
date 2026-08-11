@@ -25,19 +25,21 @@ type ScanTicketRequest struct {
 func (h *GateHandler) ScanTicket(c *gin.Context) {
 	var req ScanTicketRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, "Invalid request body")
+		response.Error(c, http.StatusBadRequest, "Format kode tiket tidak valid")
 		return
 	}
 
 	err := h.gateService.ScanTicket(c.Request.Context(), req.TicketCode)
 	if err != nil {
 		if err.Error() == "ticket already used or invalid" {
-			response.Error(c, http.StatusConflict, err.Error())
+			response.Error(c, http.StatusConflict, "Tiket sudah pernah digunakan / di check-in")
+		} else if err.Error() == "ticket not found" {
+			response.Error(c, http.StatusNotFound, "Kode tiket tidak ditemukan pada sistem")
 		} else {
-			response.Error(c, http.StatusInternalServerError, err.Error())
+			response.Error(c, http.StatusBadRequest, err.Error())
 		}
 		return
 	}
 
-	response.Success(c, http.StatusOK, "Ticket scanned successfully", nil)
+	response.Success(c, http.StatusOK, "Check-in berhasil! Tiket valid.", nil)
 }
