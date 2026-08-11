@@ -51,7 +51,7 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 	// 2. Try local lookup by ID if ticketCode is a UUID
 	if err != nil {
 		if parsedUUID, parseErr := uuid.Parse(ticketCode); parseErr == nil {
-			ticket, err = s.queries.GetLocalTicket(ctx, parsedUUID)
+			ticket, err = s.queries.GetLocalTicketByID(ctx, parsedUUID)
 		}
 	}
 
@@ -88,7 +88,7 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 					// Retry local query by code or ID
 					ticket, err = s.queries.GetLocalTicketByCode(ctx, codeToSync)
 					if err != nil {
-						ticket, err = s.queries.GetLocalTicket(ctx, parsedID)
+						ticket, err = s.queries.GetLocalTicketByID(ctx, parsedID)
 					}
 				}
 			}

@@ -39,6 +39,17 @@ func (q *Queries) GetLocalTicketByCode(ctx context.Context, ticketCode string) (
 	return i, err
 }
 
+const getLocalTicketByID = `-- name: GetLocalTicketByID :one
+SELECT id, ticket_code, status FROM local_tickets WHERE id = $1
+`
+
+func (q *Queries) GetLocalTicketByID(ctx context.Context, id uuid.UUID) (LocalTicket, error) {
+	row := q.db.QueryRow(ctx, getLocalTicketByID, id)
+	var i LocalTicket
+	err := row.Scan(&i.ID, &i.TicketCode, &i.Status)
+	return i, err
+}
+
 const updateLocalTicketStatus = `-- name: UpdateLocalTicketStatus :one
 UPDATE local_tickets SET status = $2 WHERE id = $1 RETURNING id, ticket_code, status
 `
