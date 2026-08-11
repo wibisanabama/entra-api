@@ -41,63 +41,58 @@ func (s *GateService) SyncTicket(ctx context.Context, ticketID uuid.UUID, ticket
 	return nil
 }
 
-func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
+func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID string) error {
+	ticketServiceURL := os.Getenv("TICKET_SERVICE_URL")
+	if ticketServiceURL == "" {
+		ticketServiceURL = "http://localhost:8083"
+	}
+
+	// Query ticket-service to get latest ticket details and verify event_id ownership
+	resp, httpErr := http.Get(fmt.Sprintf("%s/api/v1/internal/tickets/code/%s", ticketServiceURL, ticketCode))
+	if httpErr == nil && resp.StatusCode == http.StatusOK {
+		var res struct {
+			Data struct {
+				ID         string `json:"id"`
+				EventID    string `json:"event_id"`
+				TicketCode string `json:"ticket_code"`
+				Status     string `json:"status"`
+			} `json:"data"`
+		}
+		if errDecode := json.NewDecoder(resp.Body).Decode(&res); errDecode == nil && res.Data.ID != "" {
+			// Strict Event ID Verification! Rejects tickets belonging to other events.
+			if eventID != "" && res.Data.EventID != "" && res.Data.EventID != eventID {
+				resp.Body.Close()
+				return errors.New("ticket belongs to another event")
+			}
+
+			parsedID, parseErr := uuid.Parse(res.Data.ID)
+			if parseErr == nil {
+				status := res.Data.Status
+				if status == "" {
+					status = "ACTIVE"
+				}
+				codeToSync := res.Data.TicketCode
+				if codeToSync == "" {
+					codeToSync = ticketCode
+				}
+				_ = s.SyncTicket(ctx, parsedID, codeToSync, status)
+			}
+		}
+		resp.Body.Close()
+	}
+
+	// Local DB check
 	var ticket db.LocalTicket
 	var err error
-
-	// 1. Try local lookup by ticket_code
 	ticket, err = s.queries.GetLocalTicketByCode(ctx, ticketCode)
-
-	// 2. Try local lookup by ID if ticketCode is a UUID
 	if err != nil {
 		if parsedUUID, parseErr := uuid.Parse(ticketCode); parseErr == nil {
 			ticket, err = s.queries.GetLocalTicketByID(ctx, parsedUUID)
 		}
 	}
 
-	// 3. Fallback: Query ticket-service directly if ticket is not yet synced in local gate DB
 	if err != nil {
-		ticketServiceURL := os.Getenv("TICKET_SERVICE_URL")
-		if ticketServiceURL == "" {
-			ticketServiceURL = "http://localhost:8083"
-		}
-
-		resp, httpErr := http.Get(fmt.Sprintf("%s/api/v1/internal/tickets/code/%s", ticketServiceURL, ticketCode))
-		if httpErr == nil && resp.StatusCode == http.StatusOK {
-			var res struct {
-				Data struct {
-					ID         string `json:"id"`
-					TicketCode string `json:"ticket_code"`
-					Status     string `json:"status"`
-				} `json:"data"`
-			}
-			if errDecode := json.NewDecoder(resp.Body).Decode(&res); errDecode == nil && res.Data.ID != "" {
-				parsedID, parseErr := uuid.Parse(res.Data.ID)
-				if parseErr == nil {
-					status := res.Data.Status
-					if status == "" {
-						status = "ACTIVE"
-					}
-					// Sync ticket to local gate DB
-					codeToSync := res.Data.TicketCode
-					if codeToSync == "" {
-						codeToSync = ticketCode
-					}
-					_ = s.SyncTicket(ctx, parsedID, codeToSync, status)
-
-					// Retry local query by code or ID
-					ticket, err = s.queries.GetLocalTicketByCode(ctx, codeToSync)
-					if err != nil {
-						ticket, err = s.queries.GetLocalTicketByID(ctx, parsedID)
-					}
-				}
-			}
-			resp.Body.Close()
-		}
-
-		if err != nil {
-			return errors.New("ticket not found")
-		}
+		return errors.New("ticket not found")
 	}
 
 	if ticket.Status == "CHECKED_IN" || ticket.Status == "USED" {

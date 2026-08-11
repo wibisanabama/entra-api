@@ -20,6 +20,7 @@ func NewGateHandler(gateService *service.GateService) *GateHandler {
 
 type ScanTicketRequest struct {
 	TicketCode string `json:"ticket_code" binding:"required"`
+	EventID    string `json:"event_id"`
 }
 
 func (h *GateHandler) ScanTicket(c *gin.Context) {
@@ -29,10 +30,12 @@ func (h *GateHandler) ScanTicket(c *gin.Context) {
 		return
 	}
 
-	err := h.gateService.ScanTicket(c.Request.Context(), req.TicketCode)
+	err := h.gateService.ScanTicket(c.Request.Context(), req.TicketCode, req.EventID)
 	if err != nil {
 		if err.Error() == "ticket already used or invalid" {
 			response.Error(c, http.StatusConflict, "Tiket sudah pernah digunakan / di check-in")
+		} else if err.Error() == "ticket belongs to another event" {
+			response.Error(c, http.StatusForbidden, "Tiket ini milik event lain! Tidak berlaku untuk event ini.")
 		} else if err.Error() == "ticket not found" {
 			response.Error(c, http.StatusNotFound, "Kode tiket tidak ditemukan pada sistem")
 		} else {
