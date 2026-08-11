@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,21 @@ import (
 
 type EventResponse struct {
 	Data []string `json:"data"`
+}
+
+type AttendeeResponse struct {
+	ID           uuid.UUID              `json:"id"`
+	OrderID      uuid.UUID              `json:"order_id"`
+	UserID       uuid.UUID              `json:"user_id"`
+	EventID      uuid.UUID              `json:"event_id"`
+	TicketTypeID uuid.UUID              `json:"ticket_type_id"`
+	TicketCode   string                 `json:"ticket_code"`
+	Status       string                 `json:"status"`
+	CreatedAt    time.Time              `json:"created_at"`
+	UpdatedAt    time.Time              `json:"updated_at"`
+	UserName     string                 `json:"user_name"`
+	UserEmail    string                 `json:"user_email"`
+	User         map[string]interface{} `json:"user"`
 }
 
 func (s *TicketService) FetchOrganizerEventIDs(organizerID string) ([]string, error) {
@@ -162,7 +178,7 @@ func (s *TicketService) GetOrganizerOrder(ctx context.Context, orderID string, o
 	return &order, items, tickets, nil
 }
 
-func (s *TicketService) GetEventAttendees(ctx context.Context, eventID string, organizerID string) ([]db.Ticket, error) {
+func (s *TicketService) GetEventAttendees(ctx context.Context, eventID string, organizerID string) ([]AttendeeResponse, error) {
 	parsedEventID, err := uuid.Parse(eventID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid event id: %w", err)
@@ -190,5 +206,81 @@ func (s *TicketService) GetEventAttendees(ctx context.Context, eventID string, o
 		return nil, fmt.Errorf("failed to list tickets: %w", err)
 	}
 
-	return tickets, nil
+	// Fetch buyer user details from auth-service
+	userIDsMap := make(map[string]bool)
+	var userIDs []string
+	for _, t := range tickets {
+		uidStr := t.UserID.String()
+		if !userIDsMap[uidStr] {
+			userIDsMap[uidStr] = true
+			userIDs = append(userIDs, uidStr)
+		}
+	}
+
+	userProfiles := make(map[string]struct {
+		FullName string
+		Email    string
+	})
+
+	if len(userIDs) > 0 {
+		authServiceURL := os.Getenv("AUTH_SERVICE_URL")
+		if authServiceURL == "" {
+			authServiceURL = "http://localhost:8081"
+		}
+
+		payload, _ := json.Marshal(map[string]interface{}{"ids": userIDs})
+		req, err := http.NewRequest(http.MethodPost, authServiceURL+"/api/v1/auth/users/batch", bytes.NewBuffer(payload))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+			client := &http.Client{Timeout: 5 * time.Second}
+			resp, err := client.Do(req)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				var res struct {
+					Data []struct {
+						ID       string `json:"id"`
+						Email    string `json:"email"`
+						FullName string `json:"full_name"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&res); err == nil {
+					for _, u := range res.Data {
+						userProfiles[u.ID] = struct {
+							FullName string
+							Email    string
+						}{FullName: u.FullName, Email: u.Email}
+					}
+				}
+				resp.Body.Close()
+			}
+		}
+	}
+
+	var result []AttendeeResponse
+	for _, t := range tickets {
+		prof := userProfiles[t.UserID.String()]
+		name := prof.FullName
+		if name == "" {
+			name = "Pengunjung"
+		}
+		result = append(result, AttendeeResponse{
+			ID:           t.ID,
+			OrderID:      t.OrderID,
+			UserID:       t.UserID,
+			EventID:      t.EventID,
+			TicketTypeID: t.TicketTypeID,
+			TicketCode:   t.TicketCode,
+			Status:       t.Status,
+			CreatedAt:    t.CreatedAt,
+			UpdatedAt:    t.UpdatedAt,
+			UserName:     name,
+			UserEmail:    prof.Email,
+			User: map[string]interface{}{
+				"name":  name,
+				"email": prof.Email,
+			},
+		})
+	}
+
+	return result, nil
 }
+

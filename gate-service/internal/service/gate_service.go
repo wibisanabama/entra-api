@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 
 	"entra-api/gate-service/internal/repository/db"
 	"entra-api/shared/kafka"
@@ -38,7 +40,40 @@ func (s *GateService) SyncTicket(ctx context.Context, ticketID uuid.UUID, ticket
 func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 	ticket, err := s.queries.GetLocalTicketByCode(ctx, ticketCode)
 	if err != nil {
-		return fmt.Errorf("ticket not found: %w", err)
+		// Fallback: Query ticket-service directly if ticket is not yet synced in local gate DB
+		ticketServiceURL := os.Getenv("TICKET_SERVICE_URL")
+		if ticketServiceURL == "" {
+			ticketServiceURL = "http://localhost:8083"
+		}
+
+		resp, httpErr := http.Get(fmt.Sprintf("%s/api/v1/internal/tickets/code/%s", ticketServiceURL, ticketCode))
+		if httpErr == nil && resp.StatusCode == http.StatusOK {
+			var res struct {
+				Data struct {
+					ID         string `json:"id"`
+					TicketCode string `json:"ticket_code"`
+					Status     string `json:"status"`
+				} `json:"data"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&res); err == nil && res.Data.TicketCode != "" {
+				parsedID, parseErr := uuid.Parse(res.Data.ID)
+				if parseErr == nil {
+					status := res.Data.Status
+					if status == "" {
+						status = "ACTIVE"
+					}
+					// Sync ticket to local gate DB
+					_ = s.SyncTicket(ctx, parsedID, res.Data.TicketCode, status)
+					// Retry local query
+					ticket, err = s.queries.GetLocalTicketByCode(ctx, ticketCode)
+				}
+			}
+			resp.Body.Close()
+		}
+
+		if err != nil {
+			return fmt.Errorf("ticket not found: %w", err)
+		}
 	}
 
 	if ticket.Status != "ACTIVE" {
@@ -59,10 +94,7 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string) error {
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	err = s.producer.Publish(ctx, "ticket.scanned", []byte(updatedTicket.ID.String()), payloadBytes)
-	if err != nil {
-		return fmt.Errorf("failed to publish ticket.scanned event: %w", err)
-	}
+	_ = s.producer.Publish(ctx, "ticket.scanned", []byte(updatedTicket.ID.String()), payloadBytes)
 
 	return nil
 }

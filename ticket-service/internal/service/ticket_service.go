@@ -318,3 +318,12 @@ func (s *TicketService) ListMyOrders(ctx context.Context, userID string) ([]db.O
 		Offset: 0,
 	})
 }
+
+func (s *TicketService) GetTicketByCode(ctx context.Context, ticketCode string) (*db.Ticket, error) {
+	t, err := s.queries.GetTicketByCode(ctx, ticketCode)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+

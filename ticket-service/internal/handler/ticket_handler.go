@@ -32,3 +32,15 @@ func (h *TicketHandler) ListMyTickets(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "tickets retrieved", tickets)
 }
+
+func (h *TicketHandler) GetTicketByCodeInternal(c *gin.Context) {
+	ticketCode := c.Param("code")
+	ticket, err := h.ticketService.GetTicketByCode(c.Request.Context(), ticketCode)
+	if err != nil {
+		response.Error(c, http.StatusNotFound, "ticket not found: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "ticket retrieved", ticket)
+}
+
