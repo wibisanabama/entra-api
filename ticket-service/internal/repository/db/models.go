@@ -42,3 +42,17 @@ type Ticket struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
+
+type Withdrawal struct {
+	ID              uuid.UUID      `json:"id"`
+	OrganizerID     uuid.UUID      `json:"organizer_id"`
+	Amount          pgtype.Numeric `json:"amount"`
+	BankName        string         `json:"bank_name"`
+	AccountNumber   string         `json:"account_number"`
+	AccountName     string         `json:"account_name"`
+	Status          string         `json:"status"`
+	RejectionReason pgtype.Text    `json:"rejection_reason"`
+	Notes           pgtype.Text    `json:"notes"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}

@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, jwtSecret string) {
+func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, wh *WithdrawalHandler, jwtSecret string) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "ticket-service"})
 	})
@@ -28,5 +28,15 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, jwtSecre
 		protected.GET("/organizer/orders", oh.ListOrganizerOrders)
 		protected.GET("/organizer/orders/:id", oh.GetOrganizerOrder)
 		protected.GET("/organizer/events/:eventId/attendees", oh.GetEventAttendees)
+
+		// Withdrawal routes for organizers
+		protected.GET("/organizer/balance", wh.GetOrganizerBalance)
+		protected.POST("/organizer/withdrawals", wh.RequestWithdrawal)
+		protected.GET("/organizer/withdrawals", wh.ListOrganizerWithdrawals)
+		protected.GET("/organizer/withdrawals/:id", wh.GetOrganizerWithdrawal)
+
+		// Admin withdrawal management routes
+		protected.GET("/admin/withdrawals", wh.AdminListWithdrawals)
+		protected.PATCH("/admin/withdrawals/:id/status", wh.AdminUpdateWithdrawalStatus)
 	}
 }

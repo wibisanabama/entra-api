@@ -59,6 +59,7 @@ func main() {
 	ticketService := service.NewTicketService(queries, eventClient, producer)
 	orderHandler := handler.NewOrderHandler(ticketService)
 	ticketHandler := handler.NewTicketHandler(ticketService)
+	withdrawalHandler := handler.NewWithdrawalHandler(ticketService)
 
 	// Kafka Consumer for Payments
 	paymentConsumerGroup, err := kafka.NewConsumerGroup(cfg.Kafka.Brokers, "ticket-service-group", logger)
@@ -104,7 +105,7 @@ func main() {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
-	handler.RegisterRoutes(r, orderHandler, ticketHandler, cfg.JWT.Secret)
+	handler.RegisterRoutes(r, orderHandler, ticketHandler, withdrawalHandler, cfg.JWT.Secret)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Server.Port,

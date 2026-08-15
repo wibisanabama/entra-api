@@ -286,7 +286,16 @@ make run-storage
 | POST | `/api/v1/tickets/midtrans/webhook` | Public | Midtrans payment notification webhook listener |
 | GET | `/api/v1/tickets` | Protected | List active tickets owned by user |
 | GET | `/api/v1/tickets/organizer/stats` | Protected | Retrieve organizer sales and revenue statistics |
+| GET | `/api/v1/tickets/organizer/trend` | Protected | Retrieve daily sales trend for organizer |
+| GET | `/api/v1/tickets/organizer/orders` | Protected | List all orders across organizer's events |
+| GET | `/api/v1/tickets/organizer/orders/:id` | Protected | Get single order detail with line items & tickets |
 | GET | `/api/v1/tickets/organizer/events/:eventId/attendees` | Protected | List checked-in and total attendees with buyer name enrichment |
+| GET | `/api/v1/tickets/organizer/balance` | Protected | Retrieve organizer available balance, total revenue, and withdrawn amounts |
+| POST | `/api/v1/tickets/organizer/withdrawals` | Protected | Submit a withdrawal request with bank account details |
+| GET | `/api/v1/tickets/organizer/withdrawals` | Protected | List withdrawal request history for organizer |
+| GET | `/api/v1/tickets/organizer/withdrawals/:id` | Protected | Retrieve single withdrawal request detail |
+| GET | `/api/v1/tickets/admin/withdrawals` | Protected | Admin endpoint to list all withdrawal requests |
+| PATCH | `/api/v1/tickets/admin/withdrawals/:id/status` | Protected | Admin endpoint to approve, reject, or mark withdrawal as paid |
 
 ### Gate Service (`:8086`)
 

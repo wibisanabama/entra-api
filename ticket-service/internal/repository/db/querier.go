@@ -8,26 +8,35 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	CreateOrderItem(ctx context.Context, arg CreateOrderItemParams) (OrderItem, error)
 	CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error)
+	CreateWithdrawal(ctx context.Context, arg CreateWithdrawalParams) (Withdrawal, error)
 	GetDailySalesTrend(ctx context.Context, dollar_1 []uuid.UUID) ([]GetDailySalesTrendRow, error)
 	GetExpiredPendingOrders(ctx context.Context) ([]Order, error)
 	GetOrder(ctx context.Context, id uuid.UUID) (Order, error)
 	GetOrganizerStats(ctx context.Context, dollar_1 []uuid.UUID) (GetOrganizerStatsRow, error)
 	GetTicket(ctx context.Context, id uuid.UUID) (Ticket, error)
 	GetTicketByCode(ctx context.Context, ticketCode string) (Ticket, error)
+	GetTotalWithdrawnByOrganizer(ctx context.Context, organizerID uuid.UUID) (pgtype.Numeric, error)
+	GetWithdrawal(ctx context.Context, id uuid.UUID) (Withdrawal, error)
+	GetWithdrawnSummaryByOrganizer(ctx context.Context, organizerID uuid.UUID) (GetWithdrawnSummaryByOrganizerRow, error)
+	ListAllWithdrawals(ctx context.Context, arg ListAllWithdrawalsParams) ([]Withdrawal, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersByEvents(ctx context.Context, arg ListOrdersByEventsParams) ([]Order, error)
 	ListOrdersByUser(ctx context.Context, arg ListOrdersByUserParams) ([]Order, error)
 	ListTicketsByEvent(ctx context.Context, eventID uuid.UUID) ([]Ticket, error)
 	ListTicketsByOrder(ctx context.Context, orderID uuid.UUID) ([]Ticket, error)
 	ListTicketsByUser(ctx context.Context, arg ListTicketsByUserParams) ([]Ticket, error)
+	ListWithdrawalsByOrganizer(ctx context.Context, arg ListWithdrawalsByOrganizerParams) ([]Withdrawal, error)
+	ListWithdrawalsByStatus(ctx context.Context, arg ListWithdrawalsByStatusParams) ([]Withdrawal, error)
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	UpdateTicketStatus(ctx context.Context, arg UpdateTicketStatusParams) (Ticket, error)
+	UpdateWithdrawalStatus(ctx context.Context, arg UpdateWithdrawalStatusParams) (Withdrawal, error)
 }
 
 var _ Querier = (*Queries)(nil)
