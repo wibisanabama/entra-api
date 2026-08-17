@@ -323,3 +323,35 @@ func (h *AuthHandler) GetUsersBatch(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "users retrieved", users)
 }
+
+// ChangePassword handles password change for authenticated users.
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
+
+	var req service.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	err := h.authService.ChangePassword(c.Request.Context(), userID.(string), req.OldPassword, req.NewPassword)
+	if err != nil {
+		if err.Error() == "kata sandi lama tidak cocok" {
+			response.Error(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.NotFound(c, "user not found")
+			return
+		}
+		response.InternalError(c, "failed to change password")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Kata sandi berhasil diperbarui.", nil)
+}
+

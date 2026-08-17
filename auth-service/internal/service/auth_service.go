@@ -63,6 +63,12 @@ type ResetPasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
+// ChangePasswordRequest holds the data for direct password changes.
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
 // UpdateProfileRequest holds the data needed to update a user's profile.
 type UpdateProfileRequest struct {
 	FullName  string `json:"full_name" binding:"required,min=2"`
@@ -357,6 +363,41 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	return nil
 }
 
+// ChangePassword validates old password and updates to new password for authenticated users.
+func (s *AuthService) ChangePassword(ctx context.Context, userID string, oldPassword, newPassword string) error {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	user, err := s.queries.GetUserByID(ctx, pgUUIDFromUUID(uid))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(oldPassword)); err != nil {
+		return errors.New("kata sandi lama tidak cocok")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	err = s.queries.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: string(hashedPassword),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
+}
+
 // GetUsersByIDs fetches users in batch by their IDs.
 func (s *AuthService) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]db.GetUsersByIDsRow, error) {
 	pgIDs := make([]pgtype.UUID, len(ids))
@@ -365,3 +406,4 @@ func (s *AuthService) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]db.
 	}
 	return s.queries.GetUsersByIDs(ctx, pgIDs)
 }
+

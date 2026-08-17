@@ -38,6 +38,7 @@ func RegisterRoutes(r *gin.Engine, h *AuthHandler, jwtSecret string) {
 	{
 		protected.GET("/profile", h.GetProfile)
 		protected.PUT("/profile", h.UpdateProfile)
+		protected.POST("/change-password", h.ChangePassword)
 		protected.POST("/logout", h.Logout)
 		protected.POST("/upgrade", h.UpgradeToOrganizer)
 	}
