@@ -257,8 +257,11 @@ make run-storage
 | POST | `/api/v1/auth/register` | Public | User registration |
 | POST | `/api/v1/auth/login` | Public | User login, returns JWT access & refresh tokens |
 | POST | `/api/v1/auth/refresh` | Public | Refresh expired access token |
+| POST | `/api/v1/auth/forgot-password` | Public | Request password reset token via email |
+| POST | `/api/v1/auth/reset-password` | Public | Reset password using email verification token |
 | GET | `/api/v1/auth/profile` | Protected | Retrieve active user profile |
 | PUT | `/api/v1/auth/profile` | Protected | Update active user profile |
+| POST | `/api/v1/auth/change-password` | Protected | Directly change password with old password verification |
 | POST | `/api/v1/auth/upgrade` | Protected | Submit KYC data for organizer account upgrade |
 | POST | `/api/v1/auth/users/batch` | Internal | Retrieve user details in bulk by ID list |
 
@@ -310,6 +313,8 @@ make run-storage
 | GET | `/api/v1/cashless/wallet` | Protected | Retrieve wristband wallet balance |
 | POST | `/api/v1/cashless/topup` | Protected | Process balance top-up |
 | POST | `/api/v1/cashless/pay` | Protected | Deduct balance for merchant purchase |
+| POST | `/api/v1/cashless/refund` | Protected | Request refund of remaining wristband balance to bank account |
+| GET | `/api/v1/cashless/transactions` | Protected | Retrieve transaction ledger history |
 
 ### Storage Service (`:8087`)
 

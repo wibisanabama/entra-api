@@ -159,6 +159,73 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 	return &tx, err
 }
 
+type RefundRequest struct {
+	Amount        float64 `json:"amount" binding:"required,min=1000"`
+	BankName      string  `json:"bank_name" binding:"required"`
+	AccountNumber string  `json:"account_number" binding:"required"`
+	AccountHolder string  `json:"account_holder" binding:"required"`
+	Reason        string  `json:"reason"`
+}
+
+func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount float64, bankName, accountNumber, accountHolder, reason string) (*db.Transaction, error) {
+	wallet, err := s.GetWallet(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var balance float64
+	val, _ := wallet.Balance.Value()
+	if vStr, ok := val.(string); ok {
+		fmt.Sscanf(vStr, "%f", &balance)
+	}
+
+	if balance < amount {
+		return nil, errors.New("saldo tidak mencukupi untuk melakukan refund")
+	}
+
+	var amt pgtype.Numeric
+	_ = amt.Scan(fmt.Sprintf("%f", amount))
+	var negAmt pgtype.Numeric
+	_ = negAmt.Scan(fmt.Sprintf("-%f", amount))
+
+	// Update balance (decrement)
+	_, err = s.queries.UpdateWalletBalance(ctx, wallet.ID, negAmt)
+	if err != nil {
+		return nil, err
+	}
+
+	desc := fmt.Sprintf("Refund saldo ke %s %s a/n %s", bankName, accountNumber, accountHolder)
+	if reason != "" {
+		desc += fmt.Sprintf(" (%s)", reason)
+	}
+
+	tx, err := s.queries.CreateTransaction(ctx, db.CreateTransactionParams{
+		WalletID:    wallet.ID,
+		Type:        "DEBIT",
+		Amount:      amt,
+		MerchantID:  uuid.NullUUID{Valid: false},
+		Description: pgtype.Text{String: desc, Valid: true},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Publish event to Kafka
+	payload := map[string]interface{}{
+		"transaction_id": tx.ID.String(),
+		"wallet_id":      wallet.ID.String(),
+		"user_id":        userID,
+		"amount":         amount,
+		"bank_name":      bankName,
+		"account_number": accountNumber,
+		"account_holder": accountHolder,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	_ = s.producer.Publish(ctx, "cashless.refund", []byte(tx.ID.String()), payloadBytes)
+
+	return &tx, nil
+}
+
 func (s *WalletService) GetTransactions(ctx context.Context, userID string) ([]db.Transaction, error) {
 	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
@@ -166,3 +233,4 @@ func (s *WalletService) GetTransactions(ctx context.Context, userID string) ([]d
 	}
 	return s.queries.ListTransactions(ctx, wallet.ID, 50, 0)
 }
+

@@ -18,5 +18,6 @@ func RegisterRoutes(r *gin.Engine, wh *WalletHandler, jwtSecret string) {
 	api.GET("/wallet", wh.GetWallet)
 	api.POST("/topup", wh.TopUp)
 	api.POST("/pay", wh.PayAtMerchant)
+	api.POST("/refund", wh.RequestRefund)
 	api.GET("/transactions", wh.GetTransactions)
 }

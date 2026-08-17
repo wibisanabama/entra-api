@@ -68,6 +68,30 @@ func (h *WalletHandler) PayAtMerchant(c *gin.Context) {
 	response.Success(c, http.StatusOK, "payment successful", tx)
 }
 
+func (h *WalletHandler) RequestRefund(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req service.RefundRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	tx, err := h.walletService.RequestRefund(
+		c.Request.Context(),
+		userID,
+		req.Amount,
+		req.BankName,
+		req.AccountNumber,
+		req.AccountHolder,
+		req.Reason,
+	)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Pengajuan refund berhasil diproses.", tx)
+}
+
 func (h *WalletHandler) GetTransactions(c *gin.Context) {
 	userID := c.GetString("user_id")
 	txs, err := h.walletService.GetTransactions(c.Request.Context(), userID)
@@ -77,3 +101,4 @@ func (h *WalletHandler) GetTransactions(c *gin.Context) {
 	}
 	response.Success(c, http.StatusOK, "transactions retrieved", txs)
 }
+
