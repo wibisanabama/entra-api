@@ -119,3 +119,39 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID
 
 	return nil
 }
+
+type GateStatsResponse struct {
+	EventID      string  `json:"event_id"`
+	TotalTickets int     `json:"total_tickets"`
+	CheckedIn    int     `json:"checked_in"`
+	Remaining    int     `json:"remaining"`
+	CheckInRate  float64 `json:"checkin_rate"`
+	Status       string  `json:"status"`
+}
+
+func (s *GateService) GetGateStats(ctx context.Context, eventID string) (*GateStatsResponse, error) {
+	ticketServiceURL := os.Getenv("TICKET_SERVICE_URL")
+	if ticketServiceURL == "" {
+		ticketServiceURL = "http://localhost:8083"
+	}
+
+	resp, err := http.Get(fmt.Sprintf("%s/api/v1/internal/events/%s/gate-stats", ticketServiceURL, eventID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach ticket service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ticket service returned status: %d", resp.StatusCode)
+	}
+
+	var res struct {
+		Data GateStatsResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, fmt.Errorf("failed to decode gate stats response: %w", err)
+	}
+
+	return &res.Data, nil
+}
+

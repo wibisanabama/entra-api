@@ -44,3 +44,15 @@ func (h *TicketHandler) GetTicketByCodeInternal(c *gin.Context) {
 	response.Success(c, http.StatusOK, "ticket retrieved", ticket)
 }
 
+func (h *TicketHandler) GetEventGateStatsInternal(c *gin.Context) {
+	eventID := c.Param("eventId")
+	stats, err := h.ticketService.GetEventGateStats(c.Request.Context(), eventID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, "failed to get event gate stats: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "event gate stats retrieved", stats)
+}
+
+

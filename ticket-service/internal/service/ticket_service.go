@@ -333,3 +333,55 @@ func (s *TicketService) GetTicketByCode(ctx context.Context, ticketCode string) 
 	return &t, nil
 }
 
+type EventGateStats struct {
+	EventID      string  `json:"event_id"`
+	TotalTickets int     `json:"total_tickets"`
+	CheckedIn    int     `json:"checked_in"`
+	Remaining    int     `json:"remaining"`
+	CheckInRate  float64 `json:"checkin_rate"`
+	Status       string  `json:"status"`
+}
+
+func (s *TicketService) GetEventGateStats(ctx context.Context, eventID string) (*EventGateStats, error) {
+	uid, err := uuid.Parse(eventID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event_id: %w", err)
+	}
+
+	tickets, err := s.queries.ListTicketsByEvent(ctx, uid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tickets for event: %w", err)
+	}
+
+	total := len(tickets)
+	checkedIn := 0
+	for _, t := range tickets {
+		if t.Status == "CHECKED_IN" || t.Status == "USED" {
+			checkedIn++
+		}
+	}
+
+	remaining := total - checkedIn
+	rate := 0.0
+	if total > 0 {
+		rate = float64(checkedIn) / float64(total) * 100.0
+	}
+
+	status := "NOT_STARTED"
+	if checkedIn > 0 && checkedIn < total {
+		status = "IN_PROGRESS"
+	} else if checkedIn > 0 && checkedIn == total {
+		status = "COMPLETED"
+	}
+
+	return &EventGateStats{
+		EventID:      eventID,
+		TotalTickets: total,
+		CheckedIn:    checkedIn,
+		Remaining:    remaining,
+		CheckInRate:  rate,
+		Status:       status,
+	}, nil
+}
+
+

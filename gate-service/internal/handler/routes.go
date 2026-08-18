@@ -9,5 +9,6 @@ func RegisterRoutes(router *gin.Engine, gateHandler *GateHandler) {
 	{
 		gate := v1.Group("/gate")
 		gate.POST("/scan", gateHandler.ScanTicket)
+		gate.GET("/stats/:eventId", gateHandler.GetGateStats)
 	}
 }

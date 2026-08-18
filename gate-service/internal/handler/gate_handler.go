@@ -46,3 +46,20 @@ func (h *GateHandler) ScanTicket(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Check-in berhasil! Tiket valid.", nil)
 }
+
+func (h *GateHandler) GetGateStats(c *gin.Context) {
+	eventID := c.Param("eventId")
+	if eventID == "" {
+		response.Error(c, http.StatusBadRequest, "Event ID diperlukan")
+		return
+	}
+
+	stats, err := h.gateService.GetGateStats(c.Request.Context(), eventID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Statistik check-in gate berhasil dimuat", stats)
+}
+

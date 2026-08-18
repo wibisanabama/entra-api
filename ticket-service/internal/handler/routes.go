@@ -14,6 +14,7 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, wh *With
 	api := r.Group("/api/v1")
 	api.POST("/tickets/midtrans/webhook", oh.MidtransWebhook)
 	api.GET("/internal/tickets/code/:code", th.GetTicketByCodeInternal)
+	api.GET("/internal/events/:eventId/gate-stats", th.GetEventGateStatsInternal)
 
 	protected := api.Group("/tickets")
 	protected.Use(middleware.JWTAuth(jwtSecret))
