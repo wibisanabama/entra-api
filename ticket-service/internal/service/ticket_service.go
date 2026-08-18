@@ -384,4 +384,117 @@ func (s *TicketService) GetEventGateStats(ctx context.Context, eventID string) (
 	}, nil
 }
 
+type ValidatePromoRequest struct {
+	PromoCode      string  `json:"promo_code" binding:"required"`
+	Subtotal       float64 `json:"subtotal" binding:"required,min=0"`
+	EventID        string  `json:"event_id"`
+	TicketQuantity int     `json:"ticket_quantity"`
+}
+
+type ValidatePromoResponse struct {
+	IsValid        bool    `json:"is_valid"`
+	PromoCode      string  `json:"promo_code"`
+	DiscountType   string  `json:"discount_type"` // "PERCENTAGE" | "FLAT"
+	DiscountValue  float64 `json:"discount_value"`
+	DiscountAmount float64 `json:"discount_amount"`
+	FinalTotal     float64 `json:"final_total"`
+	Message        string  `json:"message"`
+}
+
+func (s *TicketService) ValidatePromo(ctx context.Context, req ValidatePromoRequest) (*ValidatePromoResponse, error) {
+	code := strings.ToUpper(strings.TrimSpace(req.PromoCode))
+	if code == "" {
+		return nil, errors.New("kode promo tidak boleh kosong")
+	}
+
+	var discountType string
+	var discountValue float64
+	var maxDiscount float64 = 0
+	var minOrder float64 = 0
+	var minQty int = 0
+	var desc string
+
+	switch code {
+	case "ENTRA20", "ENTRAPROMO":
+		discountType = "PERCENTAGE"
+		discountValue = 20.0
+		maxDiscount = 100000.0
+		minOrder = 50000.0
+		desc = "Diskon 20% (Maks Rp 100.000)"
+	case "FESTIVAL50", "SUPERDEAL":
+		discountType = "FLAT"
+		discountValue = 50000.0
+		minOrder = 150000.0
+		desc = "Potongan Langsung Rp 50.000"
+	case "WELCOME10", "NEWUSER":
+		discountType = "PERCENTAGE"
+		discountValue = 10.0
+		maxDiscount = 50000.0
+		minOrder = 0.0
+		desc = "Diskon Pengguna Baru 10% (Maks Rp 50.000)"
+	case "VIPPASS", "SPECIALPASS":
+		discountType = "PERCENTAGE"
+		discountValue = 15.0
+		maxDiscount = 150000.0
+		minQty = 2
+		desc = "Diskon Spesial Rombongan 15% (Min 2 Tiket)"
+	case "FLASHDEAL":
+		discountType = "FLAT"
+		discountValue = 25000.0
+		minOrder = 75000.0
+		desc = "Potongan Flash Deal Rp 25.000"
+	default:
+		return &ValidatePromoResponse{
+			IsValid:   false,
+			PromoCode: code,
+			Message:   "Kode promo tidak valid atau sudah kedaluwarsa.",
+		}, nil
+	}
+
+	if req.Subtotal < minOrder {
+		return &ValidatePromoResponse{
+			IsValid:   false,
+			PromoCode: code,
+			Message:   fmt.Sprintf("Kode promo %s membutuhkan minimal transaksi Rp %.0f.", code, minOrder),
+		}, nil
+	}
+
+	if req.TicketQuantity > 0 && req.TicketQuantity < minQty {
+		return &ValidatePromoResponse{
+			IsValid:   false,
+			PromoCode: code,
+			Message:   fmt.Sprintf("Kode promo %s membutuhkan minimal pembelian %d tiket.", code, minQty),
+		}, nil
+	}
+
+	var discountAmount float64
+	if discountType == "PERCENTAGE" {
+		discountAmount = (discountValue / 100.0) * req.Subtotal
+		if maxDiscount > 0 && discountAmount > maxDiscount {
+			discountAmount = maxDiscount
+		}
+	} else {
+		discountAmount = discountValue
+		if discountAmount > req.Subtotal {
+			discountAmount = req.Subtotal
+		}
+	}
+
+	finalTotal := req.Subtotal - discountAmount
+	if finalTotal < 0 {
+		finalTotal = 0
+	}
+
+	return &ValidatePromoResponse{
+		IsValid:        true,
+		PromoCode:      code,
+		DiscountType:   discountType,
+		DiscountValue:  discountValue,
+		DiscountAmount: discountAmount,
+		FinalTotal:     finalTotal,
+		Message:        fmt.Sprintf("Kupon promo %s berhasil diterapkan! %s", code, desc),
+	}, nil
+}
+
+
 

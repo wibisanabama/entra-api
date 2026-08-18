@@ -286,6 +286,7 @@ make run-storage
 | POST | `/api/v1/tickets/orders` | Protected | Place a new ticket order |
 | GET | `/api/v1/tickets/orders` | Protected | List order history of authenticated user |
 | POST | `/api/v1/tickets/orders/:id/pay` | Protected | Generate Midtrans Snap payment token |
+| POST | `/api/v1/tickets/promo/validate` | Public | Validate promotional discount voucher and calculate final price |
 | POST | `/api/v1/tickets/midtrans/webhook` | Public | Midtrans payment notification webhook listener |
 | GET | `/api/v1/tickets` | Protected | List active tickets owned by user |
 | GET | `/api/v1/tickets/organizer/stats` | Protected | Retrieve organizer sales and revenue statistics |
@@ -293,6 +294,7 @@ make run-storage
 | GET | `/api/v1/tickets/organizer/orders` | Protected | List all orders across organizer's events |
 | GET | `/api/v1/tickets/organizer/orders/:id` | Protected | Get single order detail with line items & tickets |
 | GET | `/api/v1/tickets/organizer/events/:eventId/attendees` | Protected | List checked-in and total attendees with buyer name enrichment |
+| GET | `/api/v1/internal/events/:eventId/gate-stats` | Internal | Retrieve real-time attendance ratios and gate count for gate-service |
 | GET | `/api/v1/tickets/organizer/balance` | Protected | Retrieve organizer available balance, total revenue, and withdrawn amounts |
 | POST | `/api/v1/tickets/organizer/withdrawals` | Protected | Submit a withdrawal request with bank account details |
 | GET | `/api/v1/tickets/organizer/withdrawals` | Protected | List withdrawal request history for organizer |
@@ -305,6 +307,7 @@ make run-storage
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | POST | `/api/v1/gate/scan` | Protected | Validate and check-in ticket via QR code or ticket ID |
+| GET | `/api/v1/gate/stats/:eventId` | Public | Retrieve real-time attendance percentage, total checked-in, and remaining attendees |
 
 ### Cashless Service (`:8085`)
 

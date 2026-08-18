@@ -187,3 +187,20 @@ func (h *OrderHandler) GetEventAttendees(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "attendees retrieved", tickets)
 }
+
+func (h *OrderHandler) ValidatePromo(c *gin.Context) {
+	var req service.ValidatePromoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	res, err := h.ticketService.ValidatePromo(c.Request.Context(), req)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "validasi promo selesai", res)
+}
+
