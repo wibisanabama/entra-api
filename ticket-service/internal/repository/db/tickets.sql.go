@@ -223,3 +223,30 @@ func (q *Queries) UpdateTicketStatus(ctx context.Context, arg UpdateTicketStatus
 	)
 	return i, err
 }
+
+const updateTicketOwner = `-- name: UpdateTicketOwner :one
+UPDATE tickets SET user_id = $2, updated_at = NOW() WHERE id = $1 RETURNING id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at
+`
+
+type UpdateTicketOwnerParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) UpdateTicketOwner(ctx context.Context, arg UpdateTicketOwnerParams) (Ticket, error) {
+	row := q.db.QueryRow(ctx, updateTicketOwner, arg.ID, arg.UserID)
+	var i Ticket
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.UserID,
+		&i.EventID,
+		&i.TicketTypeID,
+		&i.TicketCode,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+

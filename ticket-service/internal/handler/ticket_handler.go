@@ -55,4 +55,33 @@ func (h *TicketHandler) GetEventGateStatsInternal(c *gin.Context) {
 	response.Success(c, http.StatusOK, "event gate stats retrieved", stats)
 }
 
+func (h *TicketHandler) TransferTicket(c *gin.Context) {
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	ticketID := c.Param("id")
+	if ticketID == "" {
+		response.Error(c, http.StatusBadRequest, "ticket id required")
+		return
+	}
+
+	var req service.TransferTicketRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err.Error())
+		return
+	}
+
+	res, err := h.ticketService.TransferTicket(c.Request.Context(), userID.(string), ticketID, req)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "tiket berhasil ditransfer", res)
+}
+
+
 

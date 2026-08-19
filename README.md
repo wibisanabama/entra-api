@@ -289,6 +289,7 @@ make run-storage
 | POST | `/api/v1/tickets/promo/validate` | Public | Validate promotional discount voucher and calculate final price |
 | POST | `/api/v1/tickets/midtrans/webhook` | Public | Midtrans payment notification webhook listener |
 | GET | `/api/v1/tickets` | Protected | List active tickets owned by user |
+| POST | `/api/v1/tickets/:id/transfer` | Protected | Transfer unused ticket to another user via email |
 | GET | `/api/v1/tickets/organizer/stats` | Protected | Retrieve organizer sales and revenue statistics |
 | GET | `/api/v1/tickets/organizer/trend` | Protected | Retrieve daily sales trend for organizer |
 | GET | `/api/v1/tickets/organizer/orders` | Protected | List all orders across organizer's events |
