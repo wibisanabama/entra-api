@@ -117,8 +117,12 @@ func (h *WithdrawalHandler) GetOrganizerWithdrawal(c *gin.Context) {
 // AdminListWithdrawals handles GET /api/v1/tickets/admin/withdrawals
 func (h *WithdrawalHandler) AdminListWithdrawals(c *gin.Context) {
 	role, exists := c.Get(middleware.AuthUserRoleKey)
-	if !exists || (role.(string) != "admin" && role.(string) != "organizer") {
-		// allow admin or fallback
+	if !exists {
+		role, exists = c.Get("role")
+	}
+	if !exists || role.(string) != "admin" {
+		response.Forbidden(c, "insufficient permissions: admin role required")
+		return
 	}
 
 	status := c.Query("status")
@@ -136,6 +140,15 @@ func (h *WithdrawalHandler) AdminListWithdrawals(c *gin.Context) {
 
 // AdminUpdateWithdrawalStatus handles PATCH /api/v1/tickets/admin/withdrawals/:id/status
 func (h *WithdrawalHandler) AdminUpdateWithdrawalStatus(c *gin.Context) {
+	role, exists := c.Get(middleware.AuthUserRoleKey)
+	if !exists {
+		role, exists = c.Get("role")
+	}
+	if !exists || role.(string) != "admin" {
+		response.Forbidden(c, "insufficient permissions: admin role required")
+		return
+	}
+
 	withdrawalID := c.Param("id")
 
 	var req service.UpdateWithdrawalStatusRequest

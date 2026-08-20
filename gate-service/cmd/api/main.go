@@ -74,9 +74,12 @@ func main() {
 	})
 
 	gateHandler := handler.NewGateHandler(gateService)
-	handler.RegisterRoutes(router, gateHandler)
+	handler.RegisterRoutes(router, gateHandler, cfg.JWT.Secret)
 
-	port := cfg.Server.Port
+	port := os.Getenv("GATE_SERVICE_PORT")
+	if port == "" {
+		port = os.Getenv("PORT")
+	}
 	if port == "" {
 		port = "8086"
 	}

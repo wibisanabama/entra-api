@@ -201,7 +201,11 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	// Send an email instead of returning the token directly.
 	if h.smtpConfig.Host != "" {
-		resetURL := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)
+		frontendURL := os.Getenv("FRONTEND_URL")
+		if frontendURL == "" {
+			frontendURL = "http://localhost:3000"
+		}
+		resetURL := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(frontendURL, "/"), token)
 		subject := "Subject: Reset Password Anda\r\n"
 		mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
 		body := fmt.Sprintf(`<html>
@@ -326,8 +330,11 @@ func (h *AuthHandler) GetUsersBatch(c *gin.Context) {
 
 // ChangePassword handles password change for authenticated users.
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists || userID == "" {
+		userID, exists = c.Get("user_id")
+	}
+	if !exists || userID == "" {
 		response.Unauthorized(c, "unauthorized")
 		return
 	}

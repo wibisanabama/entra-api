@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"entra-api/cashless-service/internal/service"
+	"entra-api/shared/middleware"
 	"entra-api/shared/response"
 
 	"github.com/gin-gonic/gin"
@@ -17,8 +18,20 @@ func NewWalletHandler(walletService *service.WalletService) *WalletHandler {
 	return &WalletHandler{walletService: walletService}
 }
 
+func getUserID(c *gin.Context) string {
+	if val := c.GetString(middleware.AuthUserIDKey); val != "" {
+		return val
+	}
+	return c.GetString("user_id")
+}
+
 func (h *WalletHandler) GetWallet(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
+	if userID == "" {
+		response.Unauthorized(c, "unauthorized: missing user id")
+		return
+	}
+
 	wallet, err := h.walletService.GetWallet(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
@@ -32,7 +45,12 @@ type TopUpRequest struct {
 }
 
 func (h *WalletHandler) TopUp(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
+	if userID == "" {
+		response.Unauthorized(c, "unauthorized: missing user id")
+		return
+	}
+
 	var req TopUpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ValidationError(c, err.Error())
@@ -53,7 +71,12 @@ type PayRequest struct {
 }
 
 func (h *WalletHandler) PayAtMerchant(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
+	if userID == "" {
+		response.Unauthorized(c, "unauthorized: missing user id")
+		return
+	}
+
 	var req PayRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ValidationError(c, err.Error())
@@ -69,7 +92,12 @@ func (h *WalletHandler) PayAtMerchant(c *gin.Context) {
 }
 
 func (h *WalletHandler) RequestRefund(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
+	if userID == "" {
+		response.Unauthorized(c, "unauthorized: missing user id")
+		return
+	}
+
 	var req service.RefundRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ValidationError(c, err.Error())
@@ -93,7 +121,12 @@ func (h *WalletHandler) RequestRefund(c *gin.Context) {
 }
 
 func (h *WalletHandler) GetTransactions(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
+	if userID == "" {
+		response.Unauthorized(c, "unauthorized: missing user id")
+		return
+	}
+
 	txs, err := h.walletService.GetTransactions(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err.Error())
@@ -101,4 +134,3 @@ func (h *WalletHandler) GetTransactions(c *gin.Context) {
 	}
 	response.Success(c, http.StatusOK, "transactions retrieved", txs)
 }
-

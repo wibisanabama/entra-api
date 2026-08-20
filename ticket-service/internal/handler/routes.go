@@ -38,8 +38,12 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, wh *With
 		protected.GET("/organizer/withdrawals", wh.ListOrganizerWithdrawals)
 		protected.GET("/organizer/withdrawals/:id", wh.GetOrganizerWithdrawal)
 
-		// Admin withdrawal management routes
-		protected.GET("/admin/withdrawals", wh.AdminListWithdrawals)
-		protected.PATCH("/admin/withdrawals/:id/status", wh.AdminUpdateWithdrawalStatus)
+		// Admin withdrawal management routes (Admin only)
+		admin := protected.Group("/admin")
+		admin.Use(middleware.RequireRole("admin"))
+		{
+			admin.GET("/withdrawals", wh.AdminListWithdrawals)
+			admin.PATCH("/withdrawals/:id/status", wh.AdminUpdateWithdrawalStatus)
+		}
 	}
 }

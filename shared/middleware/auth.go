@@ -64,7 +64,9 @@ func JWTAuth(secret string) gin.HandlerFunc {
 
 		// Set user info in context for downstream handlers
 		c.Set(AuthUserIDKey, claims.UserID)
+		c.Set("user_id", claims.UserID)
 		c.Set(AuthUserRoleKey, claims.Role)
+		c.Set("role", claims.Role)
 		c.Next()
 	}
 }
