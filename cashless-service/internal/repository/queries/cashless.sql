@@ -7,6 +7,9 @@ SELECT * FROM wallets WHERE user_id = $1;
 -- name: UpdateWalletBalance :one
 UPDATE wallets SET balance = balance + $2, updated_at = NOW() WHERE id = $1 RETURNING *;
 
+-- name: DeductWalletBalance :one
+UPDATE wallets SET balance = balance - $2, updated_at = NOW() WHERE id = $1 AND balance >= $2 RETURNING *;
+
 -- name: CreateTopup :one
 INSERT INTO topups (wallet_id, amount, status) VALUES ($1, $2, $3) RETURNING *;
 

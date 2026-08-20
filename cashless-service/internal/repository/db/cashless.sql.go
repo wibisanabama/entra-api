@@ -92,3 +92,10 @@ func (q *Queries) UpdateWalletBalance(ctx context.Context, id uuid.UUID, balance
 	err := row.Scan(&i.ID, &i.UserID, &i.Balance, &i.CreatedAt, &i.UpdatedAt)
 	return i, err
 }
+
+func (q *Queries) DeductWalletBalance(ctx context.Context, id uuid.UUID, amount pgtype.Numeric) (Wallet, error) {
+	row := q.db.QueryRow(ctx, `UPDATE wallets SET balance = balance - $2, updated_at = NOW() WHERE id = $1 AND balance >= $2 RETURNING id, user_id, balance, created_at, updated_at`, id, amount)
+	var i Wallet
+	err := row.Scan(&i.ID, &i.UserID, &i.Balance, &i.CreatedAt, &i.UpdatedAt)
+	return i, err
+}

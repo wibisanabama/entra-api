@@ -107,7 +107,12 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 	})
 	if err != nil {
 		slog.Error("failed to create order item", "error", err)
-		// We should really use a DB transaction for Order + OrderItems. Ignoring for brevity.
+		_, _ = s.queries.UpdateOrderStatus(ctx, db.UpdateOrderStatusParams{
+			ID:     order.ID,
+			Status: "CANCELLED",
+		})
+		_ = s.eventClient.ReleaseTickets(ctx, req.TicketTypeID, req.Quantity)
+		return nil, errors.New("failed to initialize order items")
 	}
 
 	// 4. Publish Kafka Event

@@ -123,27 +123,13 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 		return nil, err
 	}
 
-	// Read balance
-	var balance float64
-	// Small hack to convert pgtype.Numeric to float64 for comparison
-	val, _ := wallet.Balance.Value()
-	if vStr, ok := val.(string); ok {
-		fmt.Sscanf(vStr, "%f", &balance)
-	}
-
-	if balance < amount {
-		return nil, errors.New("insufficient balance")
-	}
-
 	var amt pgtype.Numeric
 	_ = amt.Scan(fmt.Sprintf("%f", amount))
-	var negAmt pgtype.Numeric
-	_ = negAmt.Scan(fmt.Sprintf("-%f", amount))
 
-	// Update balance (decrement)
-	_, err = s.queries.UpdateWalletBalance(ctx, wallet.ID, negAmt)
+	// Atomic balance deduction with database-level condition (balance >= amount)
+	_, err = s.queries.DeductWalletBalance(ctx, wallet.ID, amt)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("saldo tidak mencukupi untuk melakukan transaksi")
 	}
 
 	mid, _ := uuid.Parse(merchantID)
@@ -173,25 +159,13 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 		return nil, err
 	}
 
-	var balance float64
-	val, _ := wallet.Balance.Value()
-	if vStr, ok := val.(string); ok {
-		fmt.Sscanf(vStr, "%f", &balance)
-	}
-
-	if balance < amount {
-		return nil, errors.New("saldo tidak mencukupi untuk melakukan refund")
-	}
-
 	var amt pgtype.Numeric
 	_ = amt.Scan(fmt.Sprintf("%f", amount))
-	var negAmt pgtype.Numeric
-	_ = negAmt.Scan(fmt.Sprintf("-%f", amount))
 
-	// Update balance (decrement)
-	_, err = s.queries.UpdateWalletBalance(ctx, wallet.ID, negAmt)
+	// Atomic balance deduction with database-level condition (balance >= amount)
+	_, err = s.queries.DeductWalletBalance(ctx, wallet.ID, amt)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("saldo tidak mencukupi untuk melakukan refund")
 	}
 
 	desc := fmt.Sprintf("Refund saldo ke %s %s a/n %s", bankName, accountNumber, accountHolder)
