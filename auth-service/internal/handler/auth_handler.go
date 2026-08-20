@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/smtp"
+	"os"
+	"strings"
 
 	"entra-api/auth-service/internal/repository/db"
 	"entra-api/auth-service/internal/service"
