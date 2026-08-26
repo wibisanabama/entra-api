@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"entra-api/shared/middleware"
 	"entra-api/shared/response"
 	"entra-api/ticket-service/internal/service"

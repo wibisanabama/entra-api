@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"os"
+
 	"entra-api/shared/middleware"
 
 	"github.com/gin-gonic/gin"
