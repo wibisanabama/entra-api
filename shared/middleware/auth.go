@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -110,8 +111,14 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 // RequireInternalSecret returns a middleware that validates the X-Internal-Secret header.
 func RequireInternalSecret(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// If no secret configured in dev mode, allow pass-through
 		if secret == "" {
+			if os.Getenv("APP_ENV") == "production" {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "internal security configuration error",
+				})
+				return
+			}
 			c.Next()
 			return
 		}
