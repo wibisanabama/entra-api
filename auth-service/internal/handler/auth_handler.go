@@ -197,12 +197,13 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	token, err := h.authService.ForgotPassword(c.Request.Context(), req.Email)
 	if err != nil {
-		response.InternalError(c, "failed to process forgot password request")
+		// Return generic success to prevent email enumeration
+		response.Success(c, http.StatusOK, "Jika email terdaftar, tautan reset password telah dikirim ke email Anda.", nil)
 		return
 	}
 
-	// Send an email instead of returning the token directly.
-	if h.smtpConfig.Host != "" {
+	// Send an email only if token is valid and SMTP is configured
+	if token != "" && h.smtpConfig.Host != "" {
 		frontendURL := os.Getenv("FRONTEND_URL")
 		if frontendURL == "" {
 			frontendURL = "http://localhost:3000"
@@ -243,7 +244,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}()
 	}
 
-	response.Success(c, http.StatusOK, "Tautan reset password telah dikirim ke email Anda.", nil)
+	response.Success(c, http.StatusOK, "Jika email terdaftar, tautan reset password telah dikirim ke email Anda.", nil)
 }
 
 // ResetPassword handles resetting a password using a token.

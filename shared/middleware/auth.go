@@ -106,3 +106,24 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 		})
 	}
 }
+
+// RequireInternalSecret returns a middleware that validates the X-Internal-Secret header.
+func RequireInternalSecret(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// If no secret configured in dev mode, allow pass-through
+		if secret == "" {
+			c.Next()
+			return
+		}
+		provided := c.GetHeader("X-Internal-Secret")
+		if provided == "" || provided != secret {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "access denied: invalid or missing internal service secret",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+

@@ -52,10 +52,19 @@ func (h *OrderHandler) CreatePaymentToken(c *gin.Context) {
 		return
 	}
 
-	_ = userID // In a real app, verify order belongs to user
+	uidStr := ""
+	if userID != nil {
+		if s, ok := userID.(string); ok {
+			uidStr = s
+		}
+	}
 
-	token, err := h.ticketService.CreatePaymentToken(c.Request.Context(), orderID)
+	token, err := h.ticketService.CreatePaymentToken(c.Request.Context(), orderID, uidStr)
 	if err != nil {
+		if strings.Contains(err.Error(), "access denied") {
+			response.Error(c, http.StatusForbidden, err.Error())
+			return
+		}
 		response.InternalError(c, "failed to get payment token: "+err.Error())
 		return
 	}

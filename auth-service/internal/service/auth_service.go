@@ -107,11 +107,8 @@ func (s *AuthService) Register(ctx context.Context, req RegisterRequest) (*db.Us
 		return nil, nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Default role to customer
-	role := req.Role
-	if role == "" {
-		role = "customer"
-	}
+	// Always default role to customer to prevent mass assignment / privilege escalation
+	role := "customer"
 
 	// Create user
 	user, err := s.queries.CreateUser(ctx, db.CreateUserParams{

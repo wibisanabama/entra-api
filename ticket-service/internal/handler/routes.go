@@ -14,8 +14,14 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, wh *With
 	api := r.Group("/api/v1")
 	api.POST("/tickets/midtrans/webhook", oh.MidtransWebhook)
 	api.POST("/tickets/promo/validate", oh.ValidatePromo)
-	api.GET("/internal/tickets/code/:code", th.GetTicketByCodeInternal)
-	api.GET("/internal/events/:eventId/gate-stats", th.GetEventGateStatsInternal)
+
+	// Internal service communication routes
+	internal := api.Group("/internal")
+	internal.Use(middleware.RequireInternalSecret(os.Getenv("INTERNAL_SERVICE_SECRET")))
+	{
+		internal.GET("/tickets/code/:code", th.GetTicketByCodeInternal)
+		internal.GET("/events/:eventId/gate-stats", th.GetEventGateStatsInternal)
+	}
 
 	protected := api.Group("/tickets")
 	protected.Use(middleware.JWTAuth(jwtSecret))

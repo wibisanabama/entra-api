@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"os"
+
 	"entra-api/shared/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -14,8 +16,9 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 
 	api := r.Group("/api/v1")
 	
-	// Internal routes for ticket-service communication (should be protected by an internal API key or network boundary in production)
+	// Internal routes for ticket-service communication (protected by internal service secret)
 	internal := api.Group("/internal")
+	internal.Use(middleware.RequireInternalSecret(os.Getenv("INTERNAL_SERVICE_SECRET")))
 	{
 		internal.POST("/tickets/:id/reserve", ith.ReserveTickets)
 		internal.POST("/tickets/:id/release", ith.ReleaseTickets)
@@ -31,9 +34,9 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 	api.GET("/venues", vh.List)
 	api.GET("/venues/:id", vh.Get)
 
-	// Protected routes (organizer only)
+	// Protected routes (organizer or admin only)
 	protected := api.Group("")
-	protected.Use(middleware.JWTAuth(jwtSecret))
+	protected.Use(middleware.JWTAuth(jwtSecret), middleware.RequireRole("organizer", "admin"))
 	{
 		protected.GET("/organizer/events", eh.ListByOrganizer)
 		protected.POST("/events", eh.Create)

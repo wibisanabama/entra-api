@@ -225,7 +225,7 @@ func (s *TicketService) HandlePaymentFailed(ctx context.Context, orderID string)
 	return s.CancelOrder(ctx, orderID)
 }
 
-func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string) (string, error) {
+func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, userID string) (string, error) {
 	oid, err := uuid.Parse(orderID)
 	if err != nil {
 		return "", err
@@ -234,6 +234,10 @@ func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string) 
 	order, err := s.queries.GetOrder(ctx, oid)
 	if err != nil {
 		return "", err
+	}
+
+	if userID != "" && order.UserID.String() != userID {
+		return "", errors.New("access denied: order does not belong to authenticated user")
 	}
 
 	if order.Status != "PENDING" {
