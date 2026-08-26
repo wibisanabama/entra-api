@@ -28,7 +28,13 @@ func (h *WithdrawalHandler) GetOrganizerBalance(c *gin.Context) {
 		return
 	}
 
-	balance, err := h.ticketService.GetOrganizerBalance(c.Request.Context(), organizerID.(string))
+	orgIDStr, ok := organizerID.(string)
+	if !ok || orgIDStr == "" {
+		response.Error(c, http.StatusUnauthorized, "invalid organizer session")
+		return
+	}
+
+	balance, err := h.ticketService.GetOrganizerBalance(c.Request.Context(), orgIDStr)
 	if err != nil {
 		response.InternalError(c, "failed to get balance: "+err.Error())
 		return
@@ -45,13 +51,19 @@ func (h *WithdrawalHandler) RequestWithdrawal(c *gin.Context) {
 		return
 	}
 
+	orgIDStr, ok := organizerID.(string)
+	if !ok || orgIDStr == "" {
+		response.Error(c, http.StatusUnauthorized, "invalid organizer session")
+		return
+	}
+
 	var req service.CreateWithdrawalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ValidationError(c, err.Error())
 		return
 	}
 
-	withdrawal, err := h.ticketService.RequestWithdrawal(c.Request.Context(), organizerID.(string), req)
+	withdrawal, err := h.ticketService.RequestWithdrawal(c.Request.Context(), orgIDStr, req)
 	if err != nil {
 		if errors.Is(err, service.ErrInsufficientBalance) {
 			response.Error(c, http.StatusBadRequest, "saldo tidak mencukupi untuk melakukan penarikan")
@@ -76,10 +88,16 @@ func (h *WithdrawalHandler) ListOrganizerWithdrawals(c *gin.Context) {
 		return
 	}
 
+	orgIDStr, ok := organizerID.(string)
+	if !ok || orgIDStr == "" {
+		response.Error(c, http.StatusUnauthorized, "invalid organizer session")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
-	withdrawals, err := h.ticketService.ListOrganizerWithdrawals(c.Request.Context(), organizerID.(string), page, perPage)
+	withdrawals, err := h.ticketService.ListOrganizerWithdrawals(c.Request.Context(), orgIDStr, page, perPage)
 	if err != nil {
 		response.InternalError(c, "failed to list withdrawals: "+err.Error())
 		return
@@ -96,8 +114,14 @@ func (h *WithdrawalHandler) GetOrganizerWithdrawal(c *gin.Context) {
 		return
 	}
 
+	orgIDStr, ok := organizerID.(string)
+	if !ok || orgIDStr == "" {
+		response.Error(c, http.StatusUnauthorized, "invalid organizer session")
+		return
+	}
+
 	withdrawalID := c.Param("id")
-	withdrawal, err := h.ticketService.GetOrganizerWithdrawalDetail(c.Request.Context(), withdrawalID, organizerID.(string))
+	withdrawal, err := h.ticketService.GetOrganizerWithdrawalDetail(c.Request.Context(), withdrawalID, orgIDStr)
 	if err != nil {
 		if errors.Is(err, service.ErrWithdrawalNotFound) {
 			response.Error(c, http.StatusNotFound, "withdrawal request not found")
@@ -120,7 +144,8 @@ func (h *WithdrawalHandler) AdminListWithdrawals(c *gin.Context) {
 	if !exists {
 		role, exists = c.Get("role")
 	}
-	if !exists || role.(string) != "admin" {
+	roleStr, ok := role.(string)
+	if !exists || !ok || roleStr != "admin" {
 		response.Forbidden(c, "insufficient permissions: admin role required")
 		return
 	}
@@ -144,7 +169,8 @@ func (h *WithdrawalHandler) AdminUpdateWithdrawalStatus(c *gin.Context) {
 	if !exists {
 		role, exists = c.Get("role")
 	}
-	if !exists || role.(string) != "admin" {
+	roleStr, ok := role.(string)
+	if !exists || !ok || roleStr != "admin" {
 		response.Forbidden(c, "insufficient permissions: admin role required")
 		return
 	}

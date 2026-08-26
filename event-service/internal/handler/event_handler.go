@@ -21,7 +21,12 @@ func NewEventHandler(eventService *service.EventService) *EventHandler {
 }
 
 func (h *EventHandler) Create(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 
 	var req service.CreateEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -29,7 +34,7 @@ func (h *EventHandler) Create(c *gin.Context) {
 		return
 	}
 
-	event, err := h.eventService.CreateEvent(c.Request.Context(), organizerID.(string), req)
+	event, err := h.eventService.CreateEvent(c.Request.Context(), orgIDStr, req)
 	if err != nil {
 		response.InternalError(c, "failed to create event")
 		return
@@ -92,7 +97,13 @@ func (h *EventHandler) List(c *gin.Context) {
 }
 
 func (h *EventHandler) ListByOrganizer(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
 
@@ -103,7 +114,7 @@ func (h *EventHandler) ListByOrganizer(c *gin.Context) {
 		perPage = 10
 	}
 
-	events, total, err := h.eventService.ListEventsByOrganizer(c.Request.Context(), organizerID.(string), page, perPage)
+	events, total, err := h.eventService.ListEventsByOrganizer(c.Request.Context(), orgIDStr, page, perPage)
 	if err != nil {
 		response.InternalError(c, "failed to list organizer events")
 		return
@@ -114,7 +125,13 @@ func (h *EventHandler) ListByOrganizer(c *gin.Context) {
 }
 
 func (h *EventHandler) Update(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
+
 	eventID := c.Param("id")
 
 	var req service.UpdateEventRequest
@@ -123,7 +140,7 @@ func (h *EventHandler) Update(c *gin.Context) {
 		return
 	}
 
-	event, err := h.eventService.UpdateEvent(c.Request.Context(), eventID, organizerID.(string), req)
+	event, err := h.eventService.UpdateEvent(c.Request.Context(), eventID, orgIDStr, req)
 	if err != nil {
 		if errors.Is(err, service.ErrEventNotFound) {
 			response.NotFound(c, "event not found")
@@ -137,10 +154,16 @@ func (h *EventHandler) Update(c *gin.Context) {
 }
 
 func (h *EventHandler) Delete(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
+
 	eventID := c.Param("id")
 
-	if err := h.eventService.DeleteEvent(c.Request.Context(), eventID, organizerID.(string)); err != nil {
+	if err := h.eventService.DeleteEvent(c.Request.Context(), eventID, orgIDStr); err != nil {
 		response.InternalError(c, "failed to delete event")
 		return
 	}

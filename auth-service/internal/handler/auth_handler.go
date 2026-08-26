@@ -112,9 +112,17 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 // GetProfile handles fetching the current user's profile.
 func (h *AuthHandler) GetProfile(c *gin.Context) {
-	userID, _ := c.Get(middleware.AuthUserIDKey)
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		userID, exists = c.Get("user_id")
+	}
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 
-	user, err := h.authService.GetProfile(c.Request.Context(), userID.(string))
+	user, err := h.authService.GetProfile(c.Request.Context(), uidStr)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			response.NotFound(c, "user not found")
@@ -150,7 +158,15 @@ func (h *AuthHandler) GetPublicProfile(c *gin.Context) {
 
 // UpdateProfile handles updating the current user's profile.
 func (h *AuthHandler) UpdateProfile(c *gin.Context) {
-	userID, _ := c.Get(middleware.AuthUserIDKey)
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		userID, exists = c.Get("user_id")
+	}
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 
 	var req service.UpdateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -158,7 +174,7 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	user, err := h.authService.UpdateProfile(c.Request.Context(), userID.(string), req)
+	user, err := h.authService.UpdateProfile(c.Request.Context(), uidStr, req)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			response.NotFound(c, "user not found")
@@ -284,9 +300,17 @@ func sanitizeUser(user *db.User) gin.H {
 
 // UpgradeToOrganizer handles the role upgrade request.
 func (h *AuthHandler) UpgradeToOrganizer(c *gin.Context) {
-	userID, _ := c.Get(middleware.AuthUserIDKey)
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		userID, exists = c.Get("user_id")
+	}
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 	
-	err := h.authService.UpgradeToOrganizer(c.Request.Context(), userID.(string))
+	err := h.authService.UpgradeToOrganizer(c.Request.Context(), uidStr)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			response.NotFound(c, "user not found")
@@ -337,7 +361,8 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	if !exists || userID == "" {
 		userID, exists = c.Get("user_id")
 	}
-	if !exists || userID == "" {
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
 		response.Unauthorized(c, "unauthorized")
 		return
 	}
@@ -348,7 +373,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	err := h.authService.ChangePassword(c.Request.Context(), userID.(string), req.OldPassword, req.NewPassword)
+	err := h.authService.ChangePassword(c.Request.Context(), uidStr, req.OldPassword, req.NewPassword)
 	if err != nil {
 		if err.Error() == "kata sandi lama tidak cocok" {
 			response.Error(c, http.StatusBadRequest, err.Error())
