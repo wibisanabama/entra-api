@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"entra-api/shared/middleware"
 	"entra-api/shared/response"
@@ -131,10 +132,23 @@ func (h *OrderHandler) ListOrganizerOrders(c *gin.Context) {
 		return
 	}
 
-	page := 1
-	perPage := 10 // defaults
+	orgIDStr, ok := organizerID.(string)
+	if !ok || orgIDStr == "" {
+		response.Error(c, http.StatusUnauthorized, "invalid organizer session")
+		return
+	}
 
-	orders, err := h.ticketService.ListOrganizerOrders(c.Request.Context(), organizerID.(string), page, perPage)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+	if perPage < 1 || perPage > 100 {
+		perPage = 10
+	}
+
+	orders, err := h.ticketService.ListOrganizerOrders(c.Request.Context(), orgIDStr, page, perPage)
 	if err != nil {
 		response.InternalError(c, "failed to fetch orders: "+err.Error())
 		return
