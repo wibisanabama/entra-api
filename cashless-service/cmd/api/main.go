@@ -27,7 +27,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Load()
-	cfg.Database.DBName = getEnv("CASHLESS_DB", "entra_cashless")
+	cfg.Database.DBName = getEnv("POSTGRES_DB_CASHLESS", getEnv("CASHLESS_DB", "entra_cashless"))
 	cfg.Server.Port = getEnv("CASHLESS_SERVICE_PORT", "8085")
 
 	ctx := context.Background()
@@ -68,6 +68,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
 	handler.RegisterRoutes(r, walletHandler, cfg.JWT.Secret)

@@ -16,6 +16,7 @@ import (
 	"entra-api/shared/config"
 	sharedDb "entra-api/shared/database"
 	"entra-api/shared/kafka"
+	"entra-api/shared/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,11 +27,7 @@ func main() {
 	cfg := config.Load()
 
 	// Override db name
-	dbName := os.Getenv("GATE_DB")
-	if dbName == "" {
-		dbName = "entra_gate"
-	}
-	cfg.Database.DBName = dbName
+	cfg.Database.DBName = getEnv("POSTGRES_DB_GATE", getEnv("GATE_DB", "entra_gate"))
 
 	ctx := context.Background()
 
@@ -71,7 +68,12 @@ func main() {
 	}()
 
 	// Setup Gin Server
-	router := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(middleware.CORS())
+	router.Use(middleware.Logger(logger))
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
@@ -79,13 +81,7 @@ func main() {
 	gateHandler := handler.NewGateHandler(gateService)
 	handler.RegisterRoutes(router, gateHandler, cfg.JWT.Secret)
 
-	port := os.Getenv("GATE_SERVICE_PORT")
-	if port == "" {
-		port = os.Getenv("PORT")
-	}
-	if port == "" {
-		port = "8086"
-	}
+	port := getEnv("GATE_SERVICE_PORT", getEnv("PORT", "8086"))
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -112,3 +108,11 @@ func main() {
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
 }
+
+func getEnv(key, fallback string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	return fallback
+}
+

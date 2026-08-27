@@ -29,8 +29,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Load()
-	cfg.Database.DBName = getEnv("POSTGRES_DB", "entra_event") // Using event DB since it holds the schema for testing or maybe separate DB. Let's use entra_ticket
-	cfg.Database.DBName = getEnv("TICKET_DB", "entra_ticket")
+	cfg.Database.DBName = getEnv("POSTGRES_DB_TICKET", getEnv("TICKET_DB", "entra_ticket"))
 	cfg.Server.Port = getEnv("TICKET_SERVICE_PORT", "8083")
 
 	ctx := context.Background()

@@ -27,7 +27,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Load()
-	cfg.Database.DBName = getEnv("PAYMENT_DB", "entra_payment")
+	cfg.Database.DBName = getEnv("POSTGRES_DB_PAYMENT", getEnv("PAYMENT_DB", "entra_payment"))
 	cfg.Server.Port = getEnv("PAYMENT_SERVICE_PORT", "8084")
 
 	ctx := context.Background()
@@ -68,6 +68,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
 	handler.RegisterRoutes(r, paymentHandler, cfg.JWT.Secret)

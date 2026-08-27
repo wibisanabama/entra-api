@@ -26,7 +26,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Load()
-	cfg.Database.DBName = getEnv("POSTGRES_DB", "entra_event")
+	cfg.Database.DBName = getEnv("POSTGRES_DB_EVENT", getEnv("EVENT_DB", "entra_event"))
 	cfg.Server.Port = getEnv("EVENT_SERVICE_PORT", "8082")
 
 	ctx := context.Background()

@@ -34,7 +34,7 @@ func main() {
 	cfg := config.Load()
 
 	// Override DB name for auth service
-	cfg.Database.DBName = getEnv("POSTGRES_DB", "entra_auth")
+	cfg.Database.DBName = getEnv("POSTGRES_DB_AUTH", getEnv("AUTH_DB", "entra_auth"))
 	cfg.Server.Port = getEnv("AUTH_SERVICE_PORT", "8081")
 
 	// Connect to PostgreSQL
