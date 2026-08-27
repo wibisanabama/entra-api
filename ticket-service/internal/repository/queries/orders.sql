@@ -29,7 +29,7 @@ SELECT
     COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
     COALESCE(SUM((SELECT SUM(quantity) FROM order_items WHERE order_items.order_id = orders.id)), 0)::bigint as tickets_sold
 FROM orders 
-WHERE event_id = ANY($1::uuid[]) AND status = 'SUKSES';
+WHERE event_id = ANY($1::uuid[]) AND status IN ('PAID', 'SUKSES');
 
 -- name: ListOrdersByEvents :many
 SELECT * FROM orders 
@@ -43,7 +43,7 @@ SELECT
     COALESCE(SUM(total_amount), 0)::numeric as total_revenue,
     COALESCE(SUM((SELECT SUM(quantity) FROM order_items WHERE order_items.order_id = orders.id)), 0)::bigint as tickets_sold
 FROM orders 
-WHERE event_id = ANY($1::uuid[]) AND status = 'SUKSES'
+WHERE event_id = ANY($1::uuid[]) AND status IN ('PAID', 'SUKSES')
   AND created_at >= NOW() - INTERVAL '30 days'
 GROUP BY DATE(created_at)
 ORDER BY sale_date ASC;
