@@ -19,12 +19,13 @@ func NewTicketHandler(ticketService *service.TicketService) *TicketHandler {
 
 func (h *TicketHandler) ListMyTickets(c *gin.Context) {
 	userID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	tickets, err := h.ticketService.ListMyTickets(c.Request.Context(), userID.(string))
+	tickets, err := h.ticketService.ListMyTickets(c.Request.Context(), uidStr)
 	if err != nil {
 		response.InternalError(c, "failed to fetch tickets: " + err.Error())
 		return
@@ -57,7 +58,8 @@ func (h *TicketHandler) GetEventGateStatsInternal(c *gin.Context) {
 
 func (h *TicketHandler) TransferTicket(c *gin.Context) {
 	userID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -74,7 +76,7 @@ func (h *TicketHandler) TransferTicket(c *gin.Context) {
 		return
 	}
 
-	res, err := h.ticketService.TransferTicket(c.Request.Context(), userID.(string), ticketID, req)
+	res, err := h.ticketService.TransferTicket(c.Request.Context(), uidStr, ticketID, req)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return

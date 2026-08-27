@@ -21,7 +21,8 @@ func NewOrderHandler(ticketService *service.TicketService) *OrderHandler {
 
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	userID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
@@ -32,7 +33,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	order, err := h.ticketService.CreateOrder(c.Request.Context(), userID.(string), req)
+	order, err := h.ticketService.CreateOrder(c.Request.Context(), uidStr, req)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -93,14 +94,13 @@ func (h *OrderHandler) MidtransWebhook(c *gin.Context) {
 
 func (h *OrderHandler) ListMyOrders(c *gin.Context) {
 	userID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	uidStr, ok := userID.(string)
+	if !exists || !ok || uidStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	// Wait, ticketService doesn't have ListMyOrders yet, but queries does. Let's add it to TicketService.
-	// We'll call ticketService.ListMyOrders
-	orders, err := h.ticketService.ListMyOrders(c.Request.Context(), userID.(string))
+	orders, err := h.ticketService.ListMyOrders(c.Request.Context(), uidStr)
 	if err != nil {
 		response.InternalError(c, "failed to fetch orders: " + err.Error())
 		return
@@ -111,12 +111,13 @@ func (h *OrderHandler) ListMyOrders(c *gin.Context) {
 
 func (h *OrderHandler) GetOrganizerStats(c *gin.Context) {
 	organizerID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	stats, err := h.ticketService.GetDashboardStats(c.Request.Context(), organizerID.(string))
+	stats, err := h.ticketService.GetDashboardStats(c.Request.Context(), orgIDStr)
 	if err != nil {
 		response.InternalError(c, "failed to fetch stats: "+err.Error())
 		return
@@ -160,12 +161,13 @@ func (h *OrderHandler) ListOrganizerOrders(c *gin.Context) {
 
 func (h *OrderHandler) GetSalesTrend(c *gin.Context) {
 	organizerID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	trend, err := h.ticketService.GetSalesTrend(c.Request.Context(), organizerID.(string))
+	trend, err := h.ticketService.GetSalesTrend(c.Request.Context(), orgIDStr)
 	if err != nil {
 		response.InternalError(c, "failed to fetch sales trend: "+err.Error())
 		return
@@ -177,12 +179,13 @@ func (h *OrderHandler) GetSalesTrend(c *gin.Context) {
 func (h *OrderHandler) GetOrganizerOrder(c *gin.Context) {
 	orderID := c.Param("id")
 	organizerID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	order, items, tickets, err := h.ticketService.GetOrganizerOrder(c.Request.Context(), orderID, organizerID.(string))
+	order, items, tickets, err := h.ticketService.GetOrganizerOrder(c.Request.Context(), orderID, orgIDStr)
 	if err != nil {
 		response.InternalError(c, "failed to get order: "+err.Error())
 		return
@@ -198,12 +201,13 @@ func (h *OrderHandler) GetOrganizerOrder(c *gin.Context) {
 func (h *OrderHandler) GetEventAttendees(c *gin.Context) {
 	eventID := c.Param("eventId")
 	organizerID, exists := c.Get(middleware.AuthUserIDKey)
-	if !exists {
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
 		response.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	tickets, err := h.ticketService.GetEventAttendees(c.Request.Context(), eventID, organizerID.(string))
+	tickets, err := h.ticketService.GetEventAttendees(c.Request.Context(), eventID, orgIDStr)
 	if err != nil {
 		response.InternalError(c, "failed to get attendees: "+err.Error())
 		return

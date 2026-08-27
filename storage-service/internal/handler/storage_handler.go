@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -18,13 +20,26 @@ type StorageHandler struct {
 	minioClient   *minio.Client
 	bucketName    string
 	minioEndpoint string
+	publicBaseURL string
 }
 
-func NewStorageHandler(minioClient *minio.Client, bucketName, minioEndpoint string) *StorageHandler {
+func NewStorageHandler(minioClient *minio.Client, bucketName, minioEndpoint, publicBaseURL string) *StorageHandler {
+	if publicBaseURL == "" {
+		publicBaseURL = os.Getenv("STORAGE_PUBLIC_URL")
+		if publicBaseURL == "" {
+			publicBaseURL = os.Getenv("MINIO_PUBLIC_URL")
+		}
+	}
+	if publicBaseURL == "" {
+		publicBaseURL = fmt.Sprintf("http://%s", minioEndpoint)
+	}
+	publicBaseURL = strings.TrimSuffix(publicBaseURL, "/")
+
 	return &StorageHandler{
 		minioClient:   minioClient,
 		bucketName:    bucketName,
 		minioEndpoint: minioEndpoint,
+		publicBaseURL: publicBaseURL,
 	}
 }
 
@@ -42,7 +57,7 @@ func (h *StorageHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Validate file size (e.g., 5MB max)
+	// Validate file size (5MB max)
 	if file.Size > 5*1024*1024 {
 		response.Error(c, http.StatusBadRequest, "File size exceeds 5MB limit")
 		return
@@ -55,8 +70,31 @@ func (h *StorageHandler) UploadFile(c *gin.Context) {
 	}
 	defer openedFile.Close()
 
-	userID, _ := c.Get(middleware.AuthUserIDKey)
-	organizerID := userID.(string)
+	// Validate magic bytes MIME header (BUG-BE-12)
+	header := make([]byte, 512)
+	n, err := openedFile.Read(header)
+	if err != nil && err != io.EOF {
+		response.Error(c, http.StatusInternalServerError, "Failed to read file content")
+		return
+	}
+	if _, err := openedFile.Seek(0, io.SeekStart); err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to reset file read pointer")
+		return
+	}
+
+	detectedMIME := http.DetectContentType(header[:n])
+	if detectedMIME != "image/jpeg" && detectedMIME != "image/png" {
+		response.Error(c, http.StatusBadRequest, "Invalid file content: only valid JPEG and PNG images are allowed")
+		return
+	}
+
+	// Safe type assertion for user/organizer ID (BUG-BE-10)
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	organizerID, ok := userID.(string)
+	if !exists || !ok || organizerID == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 
 	// Generate unique filename prefixed by organizer ID
 	newFilename := fmt.Sprintf("%s/%s%s", organizerID, uuid.New().String(), ext)
@@ -78,8 +116,8 @@ func (h *StorageHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	// Construct public URL
-	publicURL := fmt.Sprintf("http://%s/%s/%s", h.minioEndpoint, h.bucketName, newFilename)
+	// Construct public URL using publicBaseURL (BUG-BE-11)
+	publicURL := fmt.Sprintf("%s/%s/%s", h.publicBaseURL, h.bucketName, newFilename)
 
 	response.Success(c, http.StatusOK, "File uploaded successfully", gin.H{
 		"url": publicURL,
@@ -90,8 +128,13 @@ func (h *StorageHandler) ListFiles(c *gin.Context) {
 	ctx := context.Background()
 	var images []gin.H
 
-	userID, _ := c.Get(middleware.AuthUserIDKey)
-	organizerID := userID.(string)
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	organizerID, ok := userID.(string)
+	if !exists || !ok || organizerID == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
+
 	prefix := organizerID + "/"
 
 	for object := range h.minioClient.ListObjects(ctx, h.bucketName, minio.ListObjectsOptions{Prefix: prefix}) {
@@ -100,7 +143,7 @@ func (h *StorageHandler) ListFiles(c *gin.Context) {
 			continue
 		}
 
-		publicURL := fmt.Sprintf("http://%s/%s/%s", h.minioEndpoint, h.bucketName, object.Key)
+		publicURL := fmt.Sprintf("%s/%s/%s", h.publicBaseURL, h.bucketName, object.Key)
 		sizeKB := object.Size / 1024
 		sizeStr := fmt.Sprintf("%d KB", sizeKB)
 		if sizeKB > 1024 {
@@ -117,10 +160,10 @@ func (h *StorageHandler) ListFiles(c *gin.Context) {
 		})
 	}
 
-    // Ensure we return an empty array instead of null if no images
-    if images == nil {
-        images = []gin.H{}
-    }
+	// Ensure we return an empty array instead of null if no images
+	if images == nil {
+		images = []gin.H{}
+	}
 
 	response.Success(c, http.StatusOK, "Media retrieved", images)
 }

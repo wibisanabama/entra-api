@@ -21,7 +21,12 @@ func NewVenueHandler(venueService *service.VenueService) *VenueHandler {
 }
 
 func (h *VenueHandler) Create(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 
 	var req service.CreateVenueRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -29,7 +34,7 @@ func (h *VenueHandler) Create(c *gin.Context) {
 		return
 	}
 
-	venue, err := h.venueService.CreateVenue(c.Request.Context(), organizerID.(string), req)
+	venue, err := h.venueService.CreateVenue(c.Request.Context(), orgIDStr, req)
 	if err != nil {
 		response.InternalError(c, "failed to create venue")
 		return
@@ -76,7 +81,12 @@ func (h *VenueHandler) List(c *gin.Context) {
 }
 
 func (h *VenueHandler) Update(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 	venueID := c.Param("id")
 
 	var req service.UpdateVenueRequest
@@ -85,7 +95,7 @@ func (h *VenueHandler) Update(c *gin.Context) {
 		return
 	}
 
-	venue, err := h.venueService.UpdateVenue(c.Request.Context(), venueID, organizerID.(string), req)
+	venue, err := h.venueService.UpdateVenue(c.Request.Context(), venueID, orgIDStr, req)
 	if err != nil {
 		if errors.Is(err, service.ErrVenueNotFound) {
 			response.NotFound(c, "venue not found")
@@ -99,10 +109,15 @@ func (h *VenueHandler) Update(c *gin.Context) {
 }
 
 func (h *VenueHandler) Delete(c *gin.Context) {
-	organizerID, _ := c.Get(middleware.AuthUserIDKey)
+	organizerID, exists := c.Get(middleware.AuthUserIDKey)
+	orgIDStr, ok := organizerID.(string)
+	if !exists || !ok || orgIDStr == "" {
+		response.Unauthorized(c, "unauthorized")
+		return
+	}
 	venueID := c.Param("id")
 
-	if err := h.venueService.DeleteVenue(c.Request.Context(), venueID, organizerID.(string)); err != nil {
+	if err := h.venueService.DeleteVenue(c.Request.Context(), venueID, orgIDStr); err != nil {
 		response.InternalError(c, "failed to delete venue")
 		return
 	}

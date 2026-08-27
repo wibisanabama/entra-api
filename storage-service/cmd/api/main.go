@@ -53,7 +53,8 @@ func main() {
 		logger.Warn("bucket does not exist yet", slog.String("bucket", bucketName))
 	}
 
-	storageHandler := handler.NewStorageHandler(minioClient, bucketName, minioEndpoint)
+	publicURL := getEnv("STORAGE_PUBLIC_URL", getEnv("MINIO_PUBLIC_URL", ""))
+	storageHandler := handler.NewStorageHandler(minioClient, bucketName, minioEndpoint, publicURL)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
