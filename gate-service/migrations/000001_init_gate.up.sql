@@ -2,6 +2,8 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE IF NOT EXISTS local_tickets (
     id UUID PRIMARY KEY,
+    event_id UUID,
     ticket_code VARCHAR(100) UNIQUE NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
 );
+

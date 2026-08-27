@@ -12,6 +12,7 @@ import (
 
 type TicketPayload struct {
 	TicketID   uuid.UUID `json:"ticket_id"`
+	EventID    uuid.UUID `json:"event_id"`
 	TicketCode string    `json:"ticket_code"`
 	Status     string    `json:"status"`
 }
@@ -33,7 +34,7 @@ func (c *TicketConsumer) HandleMessage(ctx context.Context, message *sarama.Cons
 		return nil // Return nil to avoid blocking on bad messages
 	}
 
-	err := c.gateService.SyncTicket(ctx, payload.TicketID, payload.TicketCode, payload.Status)
+	err := c.gateService.SyncTicket(ctx, payload.TicketID, payload.EventID, payload.TicketCode, payload.Status)
 	if err != nil {
 		slog.Error("Failed to sync ticket", "error", err)
 		return err // We might want to retry

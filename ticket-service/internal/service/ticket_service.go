@@ -178,6 +178,7 @@ func (s *TicketService) HandlePaymentSuccess(ctx context.Context, orderID string
 			// Publish ticket.created event
 			ticketPayload := map[string]interface{}{
 				"ticket_id":   ticket.ID.String(),
+				"event_id":    order.EventID.String(),
 				"ticket_code": ticket.TicketCode,
 				"status":      ticket.Status,
 			}

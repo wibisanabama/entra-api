@@ -12,6 +12,7 @@ import (
 	"entra-api/gate-service/internal/repository/db"
 	"entra-api/shared/kafka"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type GateService struct {
@@ -26,16 +27,28 @@ func NewGateService(queries *db.Queries, producer *kafka.Producer) *GateService 
 	}
 }
 
-func (s *GateService) SyncTicket(ctx context.Context, ticketID uuid.UUID, ticketCode string, status string) error {
+func pgUUIDFromUUID(u uuid.UUID) pgtype.UUID {
+	return pgtype.UUID{Bytes: u, Valid: u != uuid.Nil}
+}
+
+func uuidFromPgUUID(p pgtype.UUID) uuid.UUID {
+	if !p.Valid {
+		return uuid.Nil
+	}
+	return uuid.UUID(p.Bytes)
+}
+
+func (s *GateService) SyncTicket(ctx context.Context, ticketID uuid.UUID, eventID uuid.UUID, ticketCode string, status string) error {
 	_, err := s.queries.CreateLocalTicket(ctx, db.CreateLocalTicketParams{
-		ID:         ticketID,
+		ID:         pgUUIDFromUUID(ticketID),
+		EventID:    pgUUIDFromUUID(eventID),
 		TicketCode: ticketCode,
 		Status:     status,
 	})
 	if err != nil {
 		// If already exists, update status
 		_, _ = s.queries.UpdateLocalTicketStatus(ctx, db.UpdateLocalTicketStatusParams{
-			ID:     ticketID,
+			ID:     pgUUIDFromUUID(ticketID),
 			Status: status,
 		})
 	}
@@ -82,7 +95,8 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID
 					if codeToSync == "" {
 						codeToSync = ticketCode
 					}
-					_ = s.SyncTicket(ctx, parsedID, codeToSync, status)
+					parsedEventID, _ := uuid.Parse(res.Data.EventID)
+					_ = s.SyncTicket(ctx, parsedID, parsedEventID, codeToSync, status)
 				}
 			}
 			resp.Body.Close()
@@ -95,12 +109,19 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID
 	ticket, err = s.queries.GetLocalTicketByCode(ctx, ticketCode)
 	if err != nil {
 		if parsedUUID, parseErr := uuid.Parse(ticketCode); parseErr == nil {
-			ticket, err = s.queries.GetLocalTicketByID(ctx, parsedUUID)
+			ticket, err = s.queries.GetLocalTicketByID(ctx, pgUUIDFromUUID(parsedUUID))
 		}
 	}
 
 	if err != nil {
 		return errors.New("ticket not found")
+	}
+
+	// Verify event_id in local mode if eventID is provided
+	if eventID != "" && ticket.EventID.Valid {
+		if parsedEventUUID, parseErr := uuid.Parse(eventID); parseErr == nil && uuidFromPgUUID(ticket.EventID) != parsedEventUUID {
+			return errors.New("ticket belongs to another event")
+		}
 	}
 
 	if ticket.Status == "CHECKED_IN" || ticket.Status == "USED" {
@@ -112,17 +133,18 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID
 		Status: "CHECKED_IN",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update ticket status: %w", err)
+		return errors.New("ticket already used or invalid")
 	}
 
+	ticketUUID := uuidFromPgUUID(updatedTicket.ID)
 	payload := map[string]interface{}{
-		"ticket_id":   updatedTicket.ID,
+		"ticket_id":   ticketUUID.String(),
 		"ticket_code": updatedTicket.TicketCode,
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	if s.producer != nil {
-		_ = s.producer.Publish(ctx, "ticket.scanned", []byte(updatedTicket.ID.String()), payloadBytes)
+		_ = s.producer.Publish(ctx, "ticket.scanned", []byte(ticketUUID.String()), payloadBytes)
 	}
 
 	return nil
