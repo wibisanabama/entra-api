@@ -46,7 +46,7 @@ func main() {
 	}
 
 	queries := db.New(pool)
-	walletService := service.NewWalletService(queries, producer)
+	walletService := service.NewWalletService(pool, queries, producer)
 	walletHandler := handler.NewWalletHandler(walletService)
 
 	// Kafka Consumer
