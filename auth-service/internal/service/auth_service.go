@@ -321,9 +321,13 @@ func pgTimestamptzFromTime(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
 }
 
-func hashToken(token string) string {
+func HashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hash[:])
+}
+
+func hashToken(token string) string {
+	return HashToken(token)
 }
 
 // ForgotPassword creates a reset token, hashes it, saves hash in database and returns raw token.

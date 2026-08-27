@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"entra-api/auth-service/internal/service"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -70,5 +71,31 @@ func TestJWTTokenGenerationAndValidation(t *testing.T) {
 	}
 	if parsedClaims.Role != role {
 		t.Errorf("expected role %s, got %s", role, parsedClaims.Role)
+	}
+}
+
+func TestPasswordResetTokenHashing(t *testing.T) {
+	rawToken := "reset-token-abc123xyz456"
+	
+	// Hashes must be deterministic SHA-256 hex strings
+	hash1 := service.HashToken(rawToken)
+	hash2 := service.HashToken(rawToken)
+
+	if hash1 == "" {
+		t.Fatal("expected non-empty token hash")
+	}
+
+	if hash1 != hash2 {
+		t.Fatalf("expected deterministic hashes, got %s and %s", hash1, hash2)
+	}
+
+	if hash1 == rawToken {
+		t.Fatal("token must not be stored in plaintext")
+	}
+
+	// Different tokens produce different hashes
+	otherHash := service.HashToken("different-token-789")
+	if hash1 == otherHash {
+		t.Fatal("expected distinct hashes for different tokens")
 	}
 }
