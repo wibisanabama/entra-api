@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -215,11 +217,31 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID string, req Upda
 	return &user, nil
 }
 
-// UpgradeToOrganizer changes a user's role to organizer.
+// UpgradeToOrganizer changes a user's role to organizer after validation.
 func (s *AuthService) UpgradeToOrganizer(ctx context.Context, userID string) error {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
 		return ErrUserNotFound
+	}
+
+	user, err := s.queries.GetUserByID(ctx, pgUUIDFromUUID(uid))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	if !user.IsActive {
+		return errors.New("inactive user cannot be upgraded to organizer")
+	}
+
+	if user.Role == "organizer" {
+		return errors.New("user is already an organizer")
+	}
+
+	if user.Role == "admin" {
+		return errors.New("admin user cannot be changed to organizer")
 	}
 
 	err = s.queries.UpdateUserRole(ctx, db.UpdateUserRoleParams{
@@ -299,7 +321,12 @@ func pgTimestamptzFromTime(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
 }
 
-// ForgotPassword creates a reset token and returns it.
+func hashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
+}
+
+// ForgotPassword creates a reset token, hashes it, saves hash in database and returns raw token.
 func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string, error) {
 	user, err := s.queries.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -309,27 +336,29 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 		return "", fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Generate simple token (UUID)
-	token := uuid.New().String()
+	// Generate secure raw token (UUID)
+	rawToken := uuid.New().String()
+	hashedToken := hashToken(rawToken)
 	
 	// Set expiry to 30 mins
 	expiresAt := time.Now().Add(30 * time.Minute)
 
 	_, err = s.queries.CreatePasswordResetToken(ctx, db.CreatePasswordResetTokenParams{
 		UserID:    user.ID,
-		Token:     token,
+		Token:     hashedToken,
 		ExpiresAt: pgTimestamptzFromTime(expiresAt),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create reset token: %w", err)
 	}
 
-	return token, nil
+	return rawToken, nil
 }
 
 // ResetPassword validates the token and updates the password.
 func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
-	resetToken, err := s.queries.GetPasswordResetToken(ctx, token)
+	hashedToken := hashToken(token)
+	resetToken, err := s.queries.GetPasswordResetToken(ctx, hashedToken)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errors.New("invalid or expired reset token")
@@ -355,7 +384,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	}
 
 	// Delete token
-	_ = s.queries.DeletePasswordResetToken(ctx, token)
+	_ = s.queries.DeletePasswordResetToken(ctx, hashedToken)
 
 	return nil
 }

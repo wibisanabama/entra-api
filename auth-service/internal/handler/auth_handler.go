@@ -316,7 +316,7 @@ func (h *AuthHandler) UpgradeToOrganizer(c *gin.Context) {
 			response.NotFound(c, "user not found")
 			return
 		}
-		response.InternalError(c, "failed to upgrade role")
+		response.Error(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"os"
+
 	"entra-api/shared/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +25,20 @@ func RegisterRoutes(r *gin.Engine, h *AuthHandler, jwtSecret string) {
 		auth.POST("/refresh", h.RefreshToken)
 		auth.POST("/forgot-password", h.ForgotPassword)
 		auth.POST("/reset-password", h.ResetPassword)
-		auth.POST("/users/batch", h.GetUsersBatch)
+	}
+
+	// Internal service routes (protected by internal service secret)
+	internal := api.Group("/internal")
+	internal.Use(middleware.RequireInternalSecret(os.Getenv("INTERNAL_SERVICE_SECRET")))
+	{
+		internal.POST("/users/batch", h.GetUsersBatch)
+	}
+
+	// Protected auth internal routes for backwards compatibility
+	authInternal := api.Group("/auth")
+	authInternal.Use(middleware.RequireInternalSecret(os.Getenv("INTERNAL_SERVICE_SECRET")))
+	{
+		authInternal.POST("/users/batch", h.GetUsersBatch)
 	}
 
 	// Public user routes
