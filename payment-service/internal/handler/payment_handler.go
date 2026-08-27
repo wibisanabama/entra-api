@@ -26,7 +26,13 @@ func (h *PaymentHandler) GetPaymentByReference(c *gin.Context) {
 		response.ValidationError(c, "invalid reference id")
 		return
 	}
-	refType := c.Param("reference_type")
+	refType := c.Query("reference_type")
+	if refType == "" {
+		refType = c.Query("type")
+	}
+	if refType == "" {
+		refType = c.Param("reference_type")
+	}
 	if refType == "" {
 		refType = "TICKET"
 	}
