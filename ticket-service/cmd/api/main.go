@@ -55,7 +55,7 @@ func main() {
 
 	// Layers
 	queries := db.New(pool)
-	ticketService := service.NewTicketService(queries, eventClient, producer)
+	ticketService := service.NewTicketService(pool, queries, eventClient, producer)
 	orderHandler := handler.NewOrderHandler(ticketService)
 	ticketHandler := handler.NewTicketHandler(ticketService)
 	withdrawalHandler := handler.NewWithdrawalHandler(ticketService)

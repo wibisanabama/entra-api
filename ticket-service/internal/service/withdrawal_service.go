@@ -102,7 +102,64 @@ func (s *TicketService) RequestWithdrawal(ctx context.Context, organizerID strin
 		return nil, ErrInvalidAmount
 	}
 
-	// Verify balance
+	var notesPg pgtype.Text
+	if req.Notes != "" {
+		notesPg = pgtype.Text{String: req.Notes, Valid: true}
+	}
+
+	if s.pool != nil {
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		}
+		defer tx.Rollback(ctx)
+
+		qtx := s.queries.WithTx(tx)
+
+		// 1. Get total revenue from successful orders
+		stats, err := s.GetDashboardStats(ctx, organizerID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch organizer stats: %w", err)
+		}
+		totalRevenue := numericToFloat64(stats.TotalRevenue)
+
+		// 2. Get withdrawal summary within transaction
+		summary, err := qtx.GetWithdrawnSummaryByOrganizer(ctx, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch withdrawal summary: %w", err)
+		}
+
+		totalWithdrawn := numericToFloat64(summary.TotalDeducted)
+		availableBalance := totalRevenue - totalWithdrawn
+		if availableBalance < 0 {
+			availableBalance = 0
+		}
+
+		if req.Amount > availableBalance {
+			return nil, ErrInsufficientBalance
+		}
+
+		withdrawal, err := qtx.CreateWithdrawal(ctx, db.CreateWithdrawalParams{
+			OrganizerID:   orgUUID,
+			Amount:        float64ToNumeric(req.Amount),
+			BankName:      req.BankName,
+			AccountNumber: req.AccountNumber,
+			AccountName:   req.AccountName,
+			Notes:         notesPg,
+			Status:        "PENDING",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create withdrawal: %w", err)
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		}
+
+		return &withdrawal, nil
+	}
+
+	// Fallback if pool is nil
 	balance, err := s.GetOrganizerBalance(ctx, organizerID)
 	if err != nil {
 		return nil, err
@@ -110,11 +167,6 @@ func (s *TicketService) RequestWithdrawal(ctx context.Context, organizerID strin
 
 	if req.Amount > balance.AvailableBalance {
 		return nil, ErrInsufficientBalance
-	}
-
-	var notesPg pgtype.Text
-	if req.Notes != "" {
-		notesPg = pgtype.Text{String: req.Notes, Valid: true}
 	}
 
 	withdrawal, err := s.queries.CreateWithdrawal(ctx, db.CreateWithdrawalParams{

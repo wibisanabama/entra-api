@@ -16,12 +16,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/coreapi"
 	"github.com/midtrans/midtrans-go/snap"
 )
 
 type TicketService struct {
+	pool        *pgxpool.Pool
 	queries     *db.Queries
 	eventClient *client.EventClient
 	producer    *kafka.Producer
@@ -29,7 +31,7 @@ type TicketService struct {
 	coreClient  coreapi.Client
 }
 
-func NewTicketService(queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer) *TicketService {
+func NewTicketService(pool *pgxpool.Pool, queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer) *TicketService {
 	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
 	if serverKey == "" {
 		serverKey = "SB-Mid-server-dummy-key-for-dev-only" // Use placeholder if not set in env
@@ -42,6 +44,7 @@ func NewTicketService(queries *db.Queries, eventClient *client.EventClient, prod
 	cClient.New(serverKey, midtrans.Sandbox)
 
 	return &TicketService{
+		pool:        pool,
 		queries:     queries,
 		eventClient: eventClient,
 		producer:    producer,
