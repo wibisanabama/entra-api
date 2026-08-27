@@ -120,7 +120,23 @@ func (s *EventService) CreateEvent(ctx context.Context, organizerID string, req 
 		return nil, fmt.Errorf("failed to create event: %w", err)
 	}
 
+	s.invalidateEventCache(ctx, "")
+
 	return &event, nil
+}
+
+func (s *EventService) invalidateEventCache(ctx context.Context, eventID string) {
+	if s.redisClient == nil {
+		return
+	}
+	if eventID != "" {
+		s.redisClient.Del(ctx, fmt.Sprintf("event:%s", eventID))
+	}
+	// Invalidate paginated event list cache keys
+	iter := s.redisClient.Scan(ctx, 0, "events:page:*", 0).Iterator()
+	for iter.Next(ctx) {
+		s.redisClient.Del(ctx, iter.Val())
+	}
 }
 
 func (s *EventService) GetEvent(ctx context.Context, eventID string) (*db.Event, error) {
@@ -387,10 +403,7 @@ func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID str
 	}
 
 	// Invalidate Cache
-	if s.redisClient != nil {
-		cacheKey := fmt.Sprintf("event:%s", eventID)
-		s.redisClient.Del(ctx, cacheKey)
-	}
+	s.invalidateEventCache(ctx, eventID)
 
 	return &event, nil
 }
@@ -409,9 +422,8 @@ func (s *EventService) DeleteEvent(ctx context.Context, eventID, organizerID str
 		ID:          pgID,
 		OrganizerID: pgOrgUUID,
 	})
-	if err == nil && s.redisClient != nil {
-		cacheKey := fmt.Sprintf("event:%s", eventID)
-		s.redisClient.Del(ctx, cacheKey)
+	if err == nil {
+		s.invalidateEventCache(ctx, eventID)
 	}
 
 	return err
@@ -420,7 +432,7 @@ func (s *EventService) DeleteEvent(ctx context.Context, eventID, organizerID str
 func (s *EventService) SearchEvents(ctx context.Context, query string, page, perPage int) ([]db.Event, error) {
 	offset := (page - 1) * perPage
 	return s.queries.SearchEvents(ctx, db.SearchEventsParams{
-		Column1: pgTextFromString("%" + query + "%"), // assuming ilike is handled in sql
+		Column1: pgTextFromString(query),
 		Limit:   int32(perPage),
 		Offset:  int32(offset),
 	})
