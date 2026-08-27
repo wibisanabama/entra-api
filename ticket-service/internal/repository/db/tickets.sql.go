@@ -198,32 +198,6 @@ func (q *Queries) ListTicketsByUser(ctx context.Context, arg ListTicketsByUserPa
 	return items, nil
 }
 
-const updateTicketStatus = `-- name: UpdateTicketStatus :one
-UPDATE tickets SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at
-`
-
-type UpdateTicketStatusParams struct {
-	ID     uuid.UUID `json:"id"`
-	Status string    `json:"status"`
-}
-
-func (q *Queries) UpdateTicketStatus(ctx context.Context, arg UpdateTicketStatusParams) (Ticket, error) {
-	row := q.db.QueryRow(ctx, updateTicketStatus, arg.ID, arg.Status)
-	var i Ticket
-	err := row.Scan(
-		&i.ID,
-		&i.OrderID,
-		&i.UserID,
-		&i.EventID,
-		&i.TicketTypeID,
-		&i.TicketCode,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const updateTicketOwner = `-- name: UpdateTicketOwner :one
 UPDATE tickets SET user_id = $2, updated_at = NOW() WHERE id = $1 RETURNING id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at
 `
@@ -250,3 +224,28 @@ func (q *Queries) UpdateTicketOwner(ctx context.Context, arg UpdateTicketOwnerPa
 	return i, err
 }
 
+const updateTicketStatus = `-- name: UpdateTicketStatus :one
+UPDATE tickets SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING id, order_id, user_id, event_id, ticket_type_id, ticket_code, status, created_at, updated_at
+`
+
+type UpdateTicketStatusParams struct {
+	ID     uuid.UUID `json:"id"`
+	Status string    `json:"status"`
+}
+
+func (q *Queries) UpdateTicketStatus(ctx context.Context, arg UpdateTicketStatusParams) (Ticket, error) {
+	row := q.db.QueryRow(ctx, updateTicketStatus, arg.ID, arg.Status)
+	var i Ticket
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.UserID,
+		&i.EventID,
+		&i.TicketTypeID,
+		&i.TicketCode,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

@@ -88,7 +88,7 @@ func (s *WalletService) ProcessTopUpSuccess(ctx context.Context, topupID string)
 		}
 		defer tx.Rollback(ctx)
 
-		qtx := s.queries.WithTx(tx)
+		qtx := db.New(tx)
 		topup, err := qtx.GetTopup(ctx, tid)
 		if err != nil {
 			return err
@@ -98,12 +98,18 @@ func (s *WalletService) ProcessTopUpSuccess(ctx context.Context, topupID string)
 			return nil // already processed
 		}
 
-		_, err = qtx.UpdateTopupStatus(ctx, tid, "SUCCESS")
+		_, err = qtx.UpdateTopupStatus(ctx, db.UpdateTopupStatusParams{
+			ID:     tid,
+			Status: "SUCCESS",
+		})
 		if err != nil {
 			return err
 		}
 
-		_, err = qtx.UpdateWalletBalance(ctx, topup.WalletID, topup.Amount)
+		_, err = qtx.UpdateWalletBalance(ctx, db.UpdateWalletBalanceParams{
+			ID:      topup.WalletID,
+			Balance: topup.Amount,
+		})
 		if err != nil {
 			return err
 		}
@@ -112,7 +118,7 @@ func (s *WalletService) ProcessTopUpSuccess(ctx context.Context, topupID string)
 			WalletID:    topup.WalletID,
 			Type:        "CREDIT",
 			Amount:      topup.Amount,
-			MerchantID:  uuid.NullUUID{Valid: false},
+			MerchantID:  pgtype.UUID{Valid: false},
 			Description: pgtype.Text{String: "Wallet Top-up", Valid: true},
 		})
 		if err != nil {
@@ -132,12 +138,18 @@ func (s *WalletService) ProcessTopUpSuccess(ctx context.Context, topupID string)
 		return nil // already processed
 	}
 
-	_, err = s.queries.UpdateTopupStatus(ctx, tid, "SUCCESS")
+	_, err = s.queries.UpdateTopupStatus(ctx, db.UpdateTopupStatusParams{
+		ID:     tid,
+		Status: "SUCCESS",
+	})
 	if err != nil {
 		return err
 	}
 
-	_, err = s.queries.UpdateWalletBalance(ctx, topup.WalletID, topup.Amount)
+	_, err = s.queries.UpdateWalletBalance(ctx, db.UpdateWalletBalanceParams{
+		ID:      topup.WalletID,
+		Balance: topup.Amount,
+	})
 	if err != nil {
 		return err
 	}
@@ -146,7 +158,7 @@ func (s *WalletService) ProcessTopUpSuccess(ctx context.Context, topupID string)
 		WalletID:    topup.WalletID,
 		Type:        "CREDIT",
 		Amount:      topup.Amount,
-		MerchantID:  uuid.NullUUID{Valid: false},
+		MerchantID:  pgtype.UUID{Valid: false},
 		Description: pgtype.Text{String: "Wallet Top-up", Valid: true},
 	})
 
@@ -159,7 +171,10 @@ func (s *WalletService) ProcessTopUpFailed(ctx context.Context, topupID string) 
 		return err
 	}
 
-	_, err = s.queries.UpdateTopupStatus(ctx, tid, "FAILED")
+	_, err = s.queries.UpdateTopupStatus(ctx, db.UpdateTopupStatusParams{
+		ID:     tid,
+		Status: "FAILED",
+	})
 	return err
 }
 
@@ -180,10 +195,13 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 		}
 		defer tx.Rollback(ctx)
 
-		qtx := s.queries.WithTx(tx)
+		qtx := db.New(tx)
 
 		// Atomic balance deduction with database-level condition (balance >= amount)
-		_, err = qtx.DeductWalletBalance(ctx, wallet.ID, amt)
+		_, err = qtx.DeductWalletBalance(ctx, db.DeductWalletBalanceParams{
+			ID:      wallet.ID,
+			Balance: amt,
+		})
 		if err != nil {
 			return nil, errors.New("saldo tidak mencukupi untuk melakukan transaksi")
 		}
@@ -192,7 +210,7 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 			WalletID:    wallet.ID,
 			Type:        "DEBIT",
 			Amount:      amt,
-			MerchantID:  uuid.NullUUID{UUID: mid, Valid: merchantID != ""},
+			MerchantID:  pgtype.UUID{Bytes: mid, Valid: merchantID != ""},
 			Description: pgtype.Text{String: "Purchase at merchant", Valid: true},
 		})
 		if err != nil {
@@ -207,7 +225,10 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 	}
 
 	// Fallback if pool is nil
-	_, err = s.queries.DeductWalletBalance(ctx, wallet.ID, amt)
+	_, err = s.queries.DeductWalletBalance(ctx, db.DeductWalletBalanceParams{
+		ID:      wallet.ID,
+		Balance: amt,
+	})
 	if err != nil {
 		return nil, errors.New("saldo tidak mencukupi untuk melakukan transaksi")
 	}
@@ -216,7 +237,7 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 		WalletID:    wallet.ID,
 		Type:        "DEBIT",
 		Amount:      amt,
-		MerchantID:  uuid.NullUUID{UUID: mid, Valid: merchantID != ""},
+		MerchantID:  pgtype.UUID{Bytes: mid, Valid: merchantID != ""},
 		Description: pgtype.Text{String: "Purchase at merchant", Valid: true},
 	})
 	
@@ -253,10 +274,13 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 		}
 		defer tx.Rollback(ctx)
 
-		qtx := s.queries.WithTx(tx)
+		qtx := db.New(tx)
 
 		// Atomic balance deduction with database-level condition (balance >= amount)
-		_, err = qtx.DeductWalletBalance(ctx, wallet.ID, amt)
+		_, err = qtx.DeductWalletBalance(ctx, db.DeductWalletBalanceParams{
+			ID:      wallet.ID,
+			Balance: amt,
+		})
 		if err != nil {
 			return nil, errors.New("saldo tidak mencukupi untuk melakukan refund")
 		}
@@ -265,7 +289,7 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 			WalletID:    wallet.ID,
 			Type:        "DEBIT",
 			Amount:      amt,
-			MerchantID:  uuid.NullUUID{Valid: false},
+			MerchantID:  pgtype.UUID{Valid: false},
 			Description: pgtype.Text{String: desc, Valid: true},
 		})
 		if err != nil {
@@ -276,7 +300,10 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 			return nil, err
 		}
 	} else {
-		_, err = s.queries.DeductWalletBalance(ctx, wallet.ID, amt)
+		_, err = s.queries.DeductWalletBalance(ctx, db.DeductWalletBalanceParams{
+			ID:      wallet.ID,
+			Balance: amt,
+		})
 		if err != nil {
 			return nil, errors.New("saldo tidak mencukupi untuk melakukan refund")
 		}
@@ -285,7 +312,7 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 			WalletID:    wallet.ID,
 			Type:        "DEBIT",
 			Amount:      amt,
-			MerchantID:  uuid.NullUUID{Valid: false},
+			MerchantID:  pgtype.UUID{Valid: false},
 			Description: pgtype.Text{String: desc, Valid: true},
 		})
 		if err != nil {
@@ -316,7 +343,11 @@ func (s *WalletService) GetTransactions(ctx context.Context, userID string) ([]d
 	if err != nil {
 		return nil, err
 	}
-	return s.queries.ListTransactions(ctx, wallet.ID, 50, 0)
+	return s.queries.ListTransactions(ctx, db.ListTransactionsParams{
+		WalletID: wallet.ID,
+		Limit:    50,
+		Offset:   0,
+	})
 }
 
 

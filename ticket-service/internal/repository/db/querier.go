@@ -35,6 +35,7 @@ type Querier interface {
 	ListWithdrawalsByOrganizer(ctx context.Context, arg ListWithdrawalsByOrganizerParams) ([]Withdrawal, error)
 	ListWithdrawalsByStatus(ctx context.Context, arg ListWithdrawalsByStatusParams) ([]Withdrawal, error)
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
+	UpdateTicketOwner(ctx context.Context, arg UpdateTicketOwnerParams) (Ticket, error)
 	UpdateTicketStatus(ctx context.Context, arg UpdateTicketStatusParams) (Ticket, error)
 	UpdateWithdrawalStatus(ctx context.Context, arg UpdateWithdrawalStatusParams) (Withdrawal, error)
 }

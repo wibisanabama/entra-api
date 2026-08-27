@@ -20,3 +20,7 @@ SELECT * FROM tickets WHERE event_id = $1 ORDER BY created_at ASC;
 
 -- name: ListTicketsByOrder :many
 SELECT * FROM tickets WHERE order_id = $1 ORDER BY created_at ASC;
+
+-- name: UpdateTicketOwner :one
+UPDATE tickets SET user_id = $2, updated_at = NOW() WHERE id = $1 RETURNING *;
+
