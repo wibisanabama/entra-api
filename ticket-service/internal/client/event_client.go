@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -42,6 +43,9 @@ func (c *EventClient) sendReservationRequest(ctx context.Context, url string, qu
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+		req.Header.Set("X-Internal-Secret", secret)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -55,3 +59,4 @@ func (c *EventClient) sendReservationRequest(ctx context.Context, url string, qu
 
 	return nil
 }
+

@@ -44,6 +44,9 @@ func (s *TicketService) FetchOrganizerEventIDs(organizerID string) ([]string, er
 	if err != nil {
 		return nil, err
 	}
+	if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+		req.Header.Set("X-Internal-Secret", secret)
+	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -232,6 +235,9 @@ func (s *TicketService) GetEventAttendees(ctx context.Context, eventID string, o
 		req, err := http.NewRequest(http.MethodPost, authServiceURL+"/api/v1/auth/users/batch", bytes.NewBuffer(payload))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
+			if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+				req.Header.Set("X-Internal-Secret", secret)
+			}
 			client := &http.Client{Timeout: 5 * time.Second}
 			resp, err := client.Do(req)
 			if err == nil && resp.StatusCode == http.StatusOK {

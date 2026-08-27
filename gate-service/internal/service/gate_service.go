@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"entra-api/gate-service/internal/repository/db"
 	"entra-api/shared/kafka"
@@ -48,37 +49,44 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID
 	}
 
 	// Query ticket-service to get latest ticket details and verify event_id ownership
-	resp, httpErr := http.Get(fmt.Sprintf("%s/api/v1/internal/tickets/code/%s", ticketServiceURL, ticketCode))
-	if httpErr == nil && resp.StatusCode == http.StatusOK {
-		var res struct {
-			Data struct {
-				ID         string `json:"id"`
-				EventID    string `json:"event_id"`
-				TicketCode string `json:"ticket_code"`
-				Status     string `json:"status"`
-			} `json:"data"`
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/internal/tickets/code/%s", ticketServiceURL, ticketCode), nil)
+	if reqErr == nil {
+		if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+			req.Header.Set("X-Internal-Secret", secret)
 		}
-		if errDecode := json.NewDecoder(resp.Body).Decode(&res); errDecode == nil && res.Data.ID != "" {
-			// Strict Event ID Verification! Rejects tickets belonging to other events.
-			if eventID != "" && res.Data.EventID != "" && res.Data.EventID != eventID {
-				resp.Body.Close()
-				return errors.New("ticket belongs to another event")
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, httpErr := client.Do(req)
+		if httpErr == nil && resp.StatusCode == http.StatusOK {
+			var res struct {
+				Data struct {
+					ID         string `json:"id"`
+					EventID    string `json:"event_id"`
+					TicketCode string `json:"ticket_code"`
+					Status     string `json:"status"`
+				} `json:"data"`
 			}
+			if errDecode := json.NewDecoder(resp.Body).Decode(&res); errDecode == nil && res.Data.ID != "" {
+				// Strict Event ID Verification! Rejects tickets belonging to other events.
+				if eventID != "" && res.Data.EventID != "" && res.Data.EventID != eventID {
+					resp.Body.Close()
+					return errors.New("ticket belongs to another event")
+				}
 
-			parsedID, parseErr := uuid.Parse(res.Data.ID)
-			if parseErr == nil {
-				status := res.Data.Status
-				if status == "" {
-					status = "ACTIVE"
+				parsedID, parseErr := uuid.Parse(res.Data.ID)
+				if parseErr == nil {
+					status := res.Data.Status
+					if status == "" {
+						status = "ACTIVE"
+					}
+					codeToSync := res.Data.TicketCode
+					if codeToSync == "" {
+						codeToSync = ticketCode
+					}
+					_ = s.SyncTicket(ctx, parsedID, codeToSync, status)
 				}
-				codeToSync := res.Data.TicketCode
-				if codeToSync == "" {
-					codeToSync = ticketCode
-				}
-				_ = s.SyncTicket(ctx, parsedID, codeToSync, status)
 			}
+			resp.Body.Close()
 		}
-		resp.Body.Close()
 	}
 
 	// Local DB check
@@ -135,7 +143,16 @@ func (s *GateService) GetGateStats(ctx context.Context, eventID string) (*GateSt
 		ticketServiceURL = "http://localhost:8083"
 	}
 
-	resp, err := http.Get(fmt.Sprintf("%s/api/v1/internal/events/%s/gate-stats", ticketServiceURL, eventID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/internal/events/%s/gate-stats", ticketServiceURL, eventID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gate stats request: %w", err)
+	}
+	if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+		req.Header.Set("X-Internal-Secret", secret)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach ticket service: %w", err)
 	}
