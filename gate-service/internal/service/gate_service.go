@@ -64,9 +64,11 @@ func (s *GateService) ScanTicket(ctx context.Context, ticketCode string, eventID
 	// Query ticket-service to get latest ticket details and verify event_id ownership
 	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/v1/internal/tickets/code/%s", ticketServiceURL, ticketCode), nil)
 	if reqErr == nil {
-		if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
-			req.Header.Set("X-Internal-Secret", secret)
+		secret := os.Getenv("INTERNAL_SERVICE_SECRET")
+		if secret == "" {
+			secret = "entra-super-secret-internal-token-change-in-production"
 		}
+		req.Header.Set("X-Internal-Secret", secret)
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, httpErr := client.Do(req)
 		if httpErr == nil && resp.StatusCode == http.StatusOK {
@@ -169,9 +171,11 @@ func (s *GateService) GetGateStats(ctx context.Context, eventID string) (*GateSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gate stats request: %w", err)
 	}
-	if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
-		req.Header.Set("X-Internal-Secret", secret)
+	secret := os.Getenv("INTERNAL_SERVICE_SECRET")
+	if secret == "" {
+		secret = "entra-super-secret-internal-token-change-in-production"
 	}
+	req.Header.Set("X-Internal-Secret", secret)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)

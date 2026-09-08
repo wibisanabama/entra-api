@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // Config holds all configuration for the application.
@@ -66,6 +68,10 @@ func (d DatabaseConfig) DSN() string {
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
+	_ = godotenv.Load()
+	_ = godotenv.Load("../.env")
+	_ = godotenv.Load("../../.env")
+
 	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
 	refreshExpiry, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "168h"))
 
