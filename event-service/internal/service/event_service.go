@@ -139,13 +139,8 @@ func (s *EventService) invalidateEventCache(ctx context.Context, eventID string)
 	}
 }
 
-func (s *EventService) GetEvent(ctx context.Context, eventID string) (*db.Event, error) {
-	pgID := pgUUIDFromString(eventID)
-	if !pgID.Valid {
-		return nil, ErrEventNotFound
-	}
-
-	cacheKey := fmt.Sprintf("event:%s", eventID)
+func (s *EventService) GetEvent(ctx context.Context, idOrSlug string) (*db.Event, error) {
+	cacheKey := fmt.Sprintf("event:%s", idOrSlug)
 	
 	// Check Cache
 	if s.redisClient != nil {
@@ -157,7 +152,16 @@ func (s *EventService) GetEvent(ctx context.Context, eventID string) (*db.Event,
 		}
 	}
 
-	event, err := s.queries.GetEventByID(ctx, pgID)
+	var event db.Event
+	var err error
+
+	pgID := pgUUIDFromString(idOrSlug)
+	if pgID.Valid {
+		event, err = s.queries.GetEventByID(ctx, pgID)
+	} else {
+		event, err = s.queries.GetEventBySlug(ctx, idOrSlug)
+	}
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrEventNotFound
@@ -218,10 +222,17 @@ func (s *EventService) ListEvents(ctx context.Context, page, perPage int) ([]db.
 
 
 
-func (s *EventService) ListTicketTypesForEvent(ctx context.Context, eventID string) ([]db.TicketType, error) {
-	pgID := pgUUIDFromString(eventID)
+func (s *EventService) ListTicketTypesForEvent(ctx context.Context, idOrSlug string) ([]db.TicketType, error) {
+	pgID := pgUUIDFromString(idOrSlug)
 	if !pgID.Valid {
-		return nil, ErrEventNotFound
+		ev, err := s.queries.GetEventBySlug(ctx, idOrSlug)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrEventNotFound
+			}
+			return nil, fmt.Errorf("failed to get event by slug: %w", err)
+		}
+		pgID = ev.ID
 	}
 
 	tickets, err := s.queries.ListTicketTypesByEvent(ctx, pgID)

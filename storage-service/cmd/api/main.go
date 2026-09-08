@@ -62,6 +62,10 @@ func main() {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger(logger))
 
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "storage-service"})
+	})
+
 	handler.RegisterRoutes(r, storageHandler, cfg.JWT.Secret)
 
 	srv := &http.Server{
