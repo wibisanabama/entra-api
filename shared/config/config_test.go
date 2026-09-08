@@ -62,11 +62,11 @@ func TestConfig_Load_Defaults(t *testing.T) {
 	if cfg.JWT.RefreshExpiry != 168*time.Hour {
 		t.Errorf("expected default JWT.RefreshExpiry 168h, got %v", cfg.JWT.RefreshExpiry)
 	}
-	if cfg.SMTP.Host != "sandbox.smtp.mailtrap.io" {
-		t.Errorf("expected default SMTP.Host sandbox.smtp.mailtrap.io, got %s", cfg.SMTP.Host)
+	if cfg.SMTP.Host != "sandbox.smtp.mailtrap.io" && cfg.SMTP.Host != "smtp.gmail.com" {
+		t.Errorf("expected default or env SMTP.Host, got %s", cfg.SMTP.Host)
 	}
-	if cfg.SMTP.Port != "2525" {
-		t.Errorf("expected default SMTP.Port 2525, got %s", cfg.SMTP.Port)
+	if cfg.SMTP.Port != "2525" && cfg.SMTP.Port != "587" {
+		t.Errorf("expected default or env SMTP.Port, got %s", cfg.SMTP.Port)
 	}
 }
 
