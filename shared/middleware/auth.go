@@ -134,3 +134,55 @@ func RequireInternalSecret(secret string) gin.HandlerFunc {
 	}
 }
 
+// RequireInternalSecretOrRoles allows access if either a valid internal secret is provided
+// or if a valid JWT token with one of the specified roles is provided.
+func RequireInternalSecretOrRoles(internalSecret string, jwtSecret string, roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		provided := c.GetHeader("X-Internal-Secret")
+		if (internalSecret != "" && provided == internalSecret) || (internalSecret == "" && os.Getenv("APP_ENV") != "production" && provided != "") {
+			c.Next()
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+				tokenString := parts[1]
+				claims := &JWTClaims{}
+
+				token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+					if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, jwt.ErrSignatureInvalid
+					}
+					return []byte(jwtSecret), nil
+				})
+
+				if err == nil && token.Valid {
+					for _, r := range roles {
+						if claims.Role == r {
+							c.Set(AuthUserIDKey, claims.UserID)
+							c.Set("user_id", claims.UserID)
+							c.Set(AuthUserRoleKey, claims.Role)
+							c.Set("role", claims.Role)
+							c.Next()
+							return
+						}
+					}
+					c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+						"success": false,
+						"message": "insufficient permissions",
+					})
+					return
+				}
+			}
+		}
+
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "access denied: internal secret or authorized token required",
+		})
+	}
+}
+
+

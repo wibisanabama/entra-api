@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"entra-api/auth-service/internal/handler"
+	"entra-api/shared/middleware"
+
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func init() {
@@ -165,6 +168,31 @@ func TestAuthHandler_RoutesSetup(t *testing.T) {
 		// Passes secret check, fails on UUID parsing validation -> 400 Bad Request
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("expected 400 Bad Request (passed auth middleware), got %d", w.Code)
+		}
+	})
+
+	t.Run("Internal batch endpoint accepts organizer JWT token", func(t *testing.T) {
+		body, _ := json.Marshal(handler.GetUsersBatchRequest{
+			IDs: []string{"invalid-uuid"},
+		})
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/users/batch", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Create organizer token
+		claims := &middleware.JWTClaims{
+			UserID: "550e8400-e29b-41d4-a716-446655440001",
+			Role:   "organizer",
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		tokenString, _ := token.SignedString([]byte(jwtSecret))
+		req.Header.Set("Authorization", "Bearer "+tokenString)
+
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		// Passes JWT organizer check, fails on UUID parsing validation -> 400 Bad Request
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request (passed JWT organizer auth), got %d", w.Code)
 		}
 	})
 }

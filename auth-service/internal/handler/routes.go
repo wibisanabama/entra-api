@@ -27,16 +27,17 @@ func RegisterRoutes(r *gin.Engine, h *AuthHandler, jwtSecret string) {
 		auth.POST("/reset-password", h.ResetPassword)
 	}
 
-	// Internal service routes (protected by internal service secret)
+	// Batch users lookup (accessible by internal services or organizers/admins)
+	batchAuth := middleware.RequireInternalSecretOrRoles(os.Getenv("INTERNAL_SERVICE_SECRET"), jwtSecret, "organizer", "admin")
+
 	internal := api.Group("/internal")
-	internal.Use(middleware.RequireInternalSecret(os.Getenv("INTERNAL_SERVICE_SECRET")))
+	internal.Use(batchAuth)
 	{
 		internal.POST("/users/batch", h.GetUsersBatch)
 	}
 
-	// Protected auth internal routes for backwards compatibility
 	authInternal := api.Group("/auth")
-	authInternal.Use(middleware.RequireInternalSecret(os.Getenv("INTERNAL_SERVICE_SECRET")))
+	authInternal.Use(batchAuth)
 	{
 		authInternal.POST("/users/batch", h.GetUsersBatch)
 	}
