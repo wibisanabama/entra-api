@@ -268,11 +268,57 @@ func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, 
 
 	snapResp, snapErr := s.snapClient.CreateTransaction(req)
 	if snapErr != nil {
+		if os.Getenv("APP_ENV") != "production" {
+			slog.Warn("Midtrans Snap transaction creation failed in non-production, returning mock token", "error", snapErr, "order_id", orderID)
+			return "MOCK_SNAP_" + midtransOrderID, nil
+		}
 		return "", snapErr
 	}
 
 	return snapResp.Token, nil
 }
+
+// SimulatePayment simulates a successful payment completion for an order (Dev / Sandbox only).
+func (s *TicketService) SimulatePayment(ctx context.Context, orderID string, userID string, role string) (*db.Order, error) {
+	if os.Getenv("APP_ENV") == "production" {
+		return nil, errors.New("simulation is disabled in production environment")
+	}
+
+	oid, err := uuid.Parse(orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	order, err := s.queries.GetOrder(ctx, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	if role != "admin" && role != "organizer" && userID != "" && order.UserID.String() != userID {
+		return nil, errors.New("access denied: order does not belong to authenticated user")
+	}
+
+	if order.Status == "PAID" {
+		return &order, nil
+	}
+
+	if order.Status != "PENDING" {
+		return nil, fmt.Errorf("cannot simulate payment for order with status %s", order.Status)
+	}
+
+	err = s.HandlePaymentSuccess(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedOrder, err := s.queries.GetOrder(ctx, oid)
+	if err != nil {
+		return &order, nil
+	}
+
+	return &updatedOrder, nil
+}
+
 
 func (s *TicketService) HandleMidtransNotification(ctx context.Context, payload map[string]interface{}) error {
 	rawOrderID, ok := payload["order_id"].(string)

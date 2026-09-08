@@ -75,6 +75,52 @@ func (h *OrderHandler) CreatePaymentToken(c *gin.Context) {
 	response.Success(c, http.StatusOK, "payment token generated", gin.H{"token": token})
 }
 
+func (h *OrderHandler) SimulatePayment(c *gin.Context) {
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	if !exists {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	orderID := c.Param("id")
+	if orderID == "" {
+		response.ValidationError(c, "order id is required")
+		return
+	}
+
+	uidStr := ""
+	if userID != nil {
+		if s, ok := userID.(string); ok {
+			uidStr = s
+		}
+	}
+
+	userRole, _ := c.Get(middleware.AuthUserRoleKey)
+	roleStr := ""
+	if userRole != nil {
+		if s, ok := userRole.(string); ok {
+			roleStr = s
+		}
+	}
+
+	order, err := h.ticketService.SimulatePayment(c.Request.Context(), orderID, uidStr, roleStr)
+	if err != nil {
+		if strings.Contains(err.Error(), "disabled in production") {
+			response.Error(c, http.StatusForbidden, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "access denied") {
+			response.Error(c, http.StatusForbidden, err.Error())
+			return
+		}
+		response.InternalError(c, "failed to simulate payment: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "payment simulated successfully", order)
+}
+
+
 func (h *OrderHandler) MidtransWebhook(c *gin.Context) {
 	var payload map[string]interface{}
 	if err := c.ShouldBindJSON(&payload); err != nil {

@@ -31,6 +31,7 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, wh *With
 		protected.POST("/orders", oh.CreateOrder)
 		protected.GET("/orders", oh.ListMyOrders)
 		protected.POST("/orders/:id/pay", oh.CreatePaymentToken)
+		protected.POST("/orders/:id/simulate", oh.SimulatePayment)
 		protected.GET("", th.ListMyTickets)
 		protected.GET("/", th.ListMyTickets)
 		protected.POST("/:id/transfer", th.TransferTicket)
