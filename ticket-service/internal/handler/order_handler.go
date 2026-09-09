@@ -62,7 +62,7 @@ func (h *OrderHandler) CreatePaymentToken(c *gin.Context) {
 		}
 	}
 
-	token, err := h.ticketService.CreatePaymentToken(c.Request.Context(), orderID, uidStr)
+	token, midtransOrderID, err := h.ticketService.CreatePaymentToken(c.Request.Context(), orderID, uidStr)
 	if err != nil {
 		if strings.Contains(err.Error(), "access denied") {
 			response.Error(c, http.StatusForbidden, err.Error())
@@ -72,7 +72,10 @@ func (h *OrderHandler) CreatePaymentToken(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, "payment token generated", gin.H{"token": token})
+	response.Success(c, http.StatusOK, "payment token generated", gin.H{
+		"token":             token,
+		"midtrans_order_id": midtransOrderID,
+	})
 }
 
 func (h *OrderHandler) SimulatePayment(c *gin.Context) {

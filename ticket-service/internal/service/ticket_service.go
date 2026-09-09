@@ -143,7 +143,7 @@ func (s *TicketService) HandlePaymentSuccess(ctx context.Context, orderID string
 		return err
 	}
 
-	if order.Status != "PENDING" {
+	if order.Status == "PAID" {
 		return nil // Already processed
 	}
 
@@ -231,28 +231,28 @@ func (s *TicketService) HandlePaymentFailed(ctx context.Context, orderID string)
 	return s.CancelOrder(ctx, orderID)
 }
 
-func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, userID string) (string, error) {
+func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, userID string) (string, string, error) {
 	oid, err := uuid.Parse(orderID)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	order, err := s.queries.GetOrder(ctx, oid)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if userID != "" && order.UserID.String() != userID {
-		return "", errors.New("access denied: order does not belong to authenticated user")
+		return "", "", errors.New("access denied: order does not belong to authenticated user")
 	}
 
 	if order.Status != "PENDING" {
-		return "", errors.New("order is not pending")
+		return "", "", errors.New("order is not pending")
 	}
 
 	val, err := order.TotalAmount.Float64Value()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	amount := val.Float64
 
@@ -272,12 +272,12 @@ func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, 
 	if snapErr != nil {
 		if os.Getenv("APP_ENV") != "production" {
 			slog.Warn("Midtrans Snap transaction creation failed in non-production, returning mock token", "error", snapErr, "order_id", orderID)
-			return "MOCK_SNAP_" + midtransOrderID, nil
+			return "MOCK_SNAP_" + midtransOrderID, midtransOrderID, nil
 		}
-		return "", snapErr
+		return "", "", snapErr
 	}
 
-	return snapResp.Token, nil
+	return snapResp.Token, midtransOrderID, nil
 }
 
 // SimulatePayment simulates a successful payment completion for an order (Dev / Sandbox only).
