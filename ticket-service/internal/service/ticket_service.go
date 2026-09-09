@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -563,13 +565,14 @@ type TransferTicketRequest struct {
 }
 
 type TransferTicketResponse struct {
-	TicketID       string `json:"ticket_id"`
-	TicketCode     string `json:"ticket_code"`
-	PreviousUserID string `json:"previous_user_id"`
-	NewOwnerEmail  string `json:"new_owner_email"`
-	Status         string `json:"status"`
-	TransferredAt  string `json:"transferred_at"`
-	Message        string `json:"message"`
+	TicketID        string `json:"ticket_id"`
+	TicketCode      string `json:"ticket_code"`
+	PreviousUserID  string `json:"previous_user_id"`
+	RecipientUserID string `json:"recipient_user_id,omitempty"`
+	NewOwnerEmail   string `json:"new_owner_email"`
+	Status          string `json:"status"`
+	TransferredAt   string `json:"transferred_at"`
+	Message         string `json:"message"`
 }
 
 func (s *TicketService) TransferTicket(ctx context.Context, senderUserID string, ticketID string, req TransferTicketRequest) (*TransferTicketResponse, error) {
@@ -599,14 +602,77 @@ func (s *TicketService) TransferTicket(ctx context.Context, senderUserID string,
 		return nil, errors.New("tiket sudah tidak aktif")
 	}
 
+	cleanEmail := strings.ToLower(strings.TrimSpace(req.RecipientEmail))
+	if cleanEmail == "" {
+		return nil, errors.New("email penerima tidak boleh kosong")
+	}
+
 	var targetUserID uuid.UUID
+	recipientName := req.RecipientName
+
 	if req.RecipientUserID != "" {
 		if uid, parseErr := uuid.Parse(req.RecipientUserID); parseErr == nil {
 			targetUserID = uid
 		}
 	}
+
+	// Lookup user in auth-service if recipient user_id was not directly provided
 	if targetUserID == uuid.Nil {
-		targetUserID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(strings.ToLower(strings.TrimSpace(req.RecipientEmail))))
+		authServiceURL := os.Getenv("AUTH_SERVICE_URL")
+		if authServiceURL == "" {
+			authServiceURL = "http://localhost:8081"
+		}
+
+		endpoint := fmt.Sprintf("%s/api/v1/internal/users/by-email?email=%s", authServiceURL, url.QueryEscape(cleanEmail))
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("gagal membuat request validasi penerima: %w", err)
+		}
+
+		if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+			httpReq.Header.Set("X-Internal-Secret", secret)
+		}
+
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Do(httpReq)
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to query auth-service for recipient lookup", "error", err, "email", cleanEmail)
+			return nil, errors.New("gagal menghubungi layanan autentikasi untuk memvalidasi email penerima")
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, errors.New("Pengguna dengan email tersebut belum terdaftar di Entra. Harap minta penerima untuk mendaftar akun terlebih dahulu.")
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("layanan autentikasi mengembalikan status error: %d", resp.StatusCode)
+		}
+
+		var authRes struct {
+			Data struct {
+				ID       string `json:"id"`
+				Email    string `json:"email"`
+				FullName string `json:"full_name"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&authRes); err != nil {
+			return nil, errors.New("gagal memproses respon dari layanan autentikasi")
+		}
+
+		parsedRecipientID, err := uuid.Parse(authRes.Data.ID)
+		if err != nil {
+			return nil, errors.New("ID pengguna penerima tidak valid")
+		}
+		targetUserID = parsedRecipientID
+
+		if recipientName == "" && authRes.Data.FullName != "" {
+			recipientName = authRes.Data.FullName
+		}
+	}
+
+	// Prevent self-transfer
+	if targetUserID == parsedSenderID {
+		return nil, errors.New("anda tidak dapat mentransfer tiket ke akun Anda sendiri")
 	}
 
 	updatedTicket, err := s.queries.UpdateTicketOwner(ctx, db.UpdateTicketOwnerParams{
@@ -619,25 +685,27 @@ func (s *TicketService) TransferTicket(ctx context.Context, senderUserID string,
 
 	if s.producer != nil {
 		eventPayload, _ := json.Marshal(map[string]interface{}{
-			"ticket_id":        updatedTicket.ID.String(),
-			"ticket_code":      updatedTicket.TicketCode,
-			"event_id":         updatedTicket.EventID.String(),
-			"previous_user_id": senderUserID,
-			"recipient_email":  req.RecipientEmail,
-			"recipient_name":   req.RecipientName,
-			"transferred_at":   time.Now().Format(time.RFC3339),
+			"ticket_id":         updatedTicket.ID.String(),
+			"ticket_code":       updatedTicket.TicketCode,
+			"event_id":          updatedTicket.EventID.String(),
+			"previous_user_id":  senderUserID,
+			"recipient_user_id": targetUserID.String(),
+			"recipient_email":   cleanEmail,
+			"recipient_name":    recipientName,
+			"transferred_at":    time.Now().Format(time.RFC3339),
 		})
 		_ = s.producer.Publish(ctx, "ticket.transferred", []byte(updatedTicket.ID.String()), eventPayload)
 	}
 
 	return &TransferTicketResponse{
-		TicketID:       updatedTicket.ID.String(),
-		TicketCode:     updatedTicket.TicketCode,
-		PreviousUserID: senderUserID,
-		NewOwnerEmail:  req.RecipientEmail,
-		Status:         updatedTicket.Status,
-		TransferredAt:  time.Now().Format(time.RFC3339),
-		Message:        fmt.Sprintf("Tiket %s berhasil ditransfer ke %s", updatedTicket.TicketCode, req.RecipientEmail),
+		TicketID:        updatedTicket.ID.String(),
+		TicketCode:      updatedTicket.TicketCode,
+		PreviousUserID:  senderUserID,
+		RecipientUserID: targetUserID.String(),
+		NewOwnerEmail:   cleanEmail,
+		Status:          updatedTicket.Status,
+		TransferredAt:   time.Now().Format(time.RFC3339),
+		Message:         fmt.Sprintf("Tiket %s berhasil ditransfer ke %s", updatedTicket.TicketCode, cleanEmail),
 	}, nil
 }
 

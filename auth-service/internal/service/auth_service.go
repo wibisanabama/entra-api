@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"entra-api/auth-service/internal/repository/db"
@@ -435,5 +436,18 @@ func (s *AuthService) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]db.
 		pgIDs[i] = pgUUIDFromUUID(id)
 	}
 	return s.queries.GetUsersByIDs(ctx, pgIDs)
+}
+
+// GetUserByEmail fetches an active user by their email.
+func (s *AuthService) GetUserByEmail(ctx context.Context, email string) (*db.User, error) {
+	cleanEmail := strings.ToLower(strings.TrimSpace(email))
+	user, err := s.queries.GetUserByEmail(ctx, cleanEmail)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+	return &user, nil
 }
 

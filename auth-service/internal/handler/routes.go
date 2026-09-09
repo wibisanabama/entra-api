@@ -34,12 +34,14 @@ func RegisterRoutes(r *gin.Engine, h *AuthHandler, jwtSecret string) {
 	internal.Use(batchAuth)
 	{
 		internal.POST("/users/batch", h.GetUsersBatch)
+		internal.GET("/users/by-email", h.LookupUserByEmail)
 	}
 
 	authInternal := api.Group("/auth")
 	authInternal.Use(batchAuth)
 	{
 		authInternal.POST("/users/batch", h.GetUsersBatch)
+		authInternal.GET("/users/by-email", h.LookupUserByEmail)
 	}
 
 	// Public user routes

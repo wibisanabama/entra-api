@@ -355,6 +355,35 @@ func (h *AuthHandler) GetUsersBatch(c *gin.Context) {
 	response.Success(c, http.StatusOK, "users retrieved", users)
 }
 
+// LookupUserByEmail handles internal user lookup by email.
+func (h *AuthHandler) LookupUserByEmail(c *gin.Context) {
+	email := strings.TrimSpace(c.Query("email"))
+	if email == "" {
+		var req struct {
+			Email string `json:"email"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		email = strings.TrimSpace(req.Email)
+	}
+
+	if email == "" {
+		response.ValidationError(c, "email is required")
+		return
+	}
+
+	user, err := h.authService.GetUserByEmail(c.Request.Context(), email)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.NotFound(c, "user not found")
+			return
+		}
+		response.InternalError(c, "failed to lookup user")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "user retrieved", sanitizeUser(user))
+}
+
 // ChangePassword handles password change for authenticated users.
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	userID, exists := c.Get(middleware.AuthUserIDKey)

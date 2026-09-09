@@ -54,6 +54,17 @@ func TestAuthHandler_GetUsersBatch_Validation(t *testing.T) {
 			t.Errorf("expected 400 Bad Request for invalid uuid, got %d", w.Code)
 		}
 	})
+
+	t.Run("Rejects request with missing email parameter", func(t *testing.T) {
+		r.GET("/api/v1/internal/users/by-email", h.LookupUserByEmail)
+		req, _ := http.NewRequest(http.MethodGet, "/api/v1/internal/users/by-email", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("expected 422 Unprocessable Entity, got %d", w.Code)
+		}
+	})
 }
 
 func TestAuthHandler_Profile_UnauthorizedWithoutContext(t *testing.T) {
