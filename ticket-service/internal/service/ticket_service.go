@@ -592,7 +592,7 @@ func (s *TicketService) TransferTicket(ctx context.Context, senderUserID string,
 	}
 
 	if ticket.UserID != parsedSenderID {
-		return nil, errors.New("anda bukan pemilik tiket ini")
+		return nil, errors.New("Anda bukan pemilik tiket ini")
 	}
 
 	if ticket.Status == "CHECKED_IN" || ticket.Status == "USED" {
@@ -672,7 +672,7 @@ func (s *TicketService) TransferTicket(ctx context.Context, senderUserID string,
 
 	// Prevent self-transfer
 	if targetUserID == parsedSenderID {
-		return nil, errors.New("anda tidak dapat mentransfer tiket ke akun Anda sendiri")
+		return nil, errors.New("Anda tidak dapat mentransfer tiket ke akun Anda sendiri")
 	}
 
 	updatedTicket, err := s.queries.UpdateTicketOwner(ctx, db.UpdateTicketOwnerParams{

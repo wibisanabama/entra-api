@@ -17,7 +17,7 @@ func validateTransferRules(senderID string, recipientID string, ticketStatus str
 		return false, "tiket sudah tidak aktif"
 	}
 	if senderID == recipientID {
-		return false, "anda tidak dapat mentransfer tiket ke akun Anda sendiri"
+		return false, "Anda tidak dapat mentransfer tiket ke akun Anda sendiri"
 	}
 	return true, ""
 }
@@ -60,7 +60,7 @@ func TestTransferTicketValidationRules(t *testing.T) {
 			ticketStatus:   "ACTIVE",
 			recipientEmail: "sender@example.com",
 			wantValid:      false,
-			wantErrMsg:     "anda tidak dapat mentransfer tiket ke akun Anda sendiri",
+			wantErrMsg:     "Anda tidak dapat mentransfer tiket ke akun Anda sendiri",
 		},
 		{
 			name:           "Checked in ticket rejection",
