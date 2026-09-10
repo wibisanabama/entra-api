@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 
 	"entra-api/cashless-service/internal/repository/db"
 	"entra-api/shared/kafka"
@@ -104,7 +103,7 @@ func (s *WalletService) InitiateTopUp(ctx context.Context, userID string, amount
 		_ = s.producer.Publish(ctx, "topup.created", []byte(topup.ID.String()), payloadBytes)
 	}
 
-	midtransOrderID := fmt.Sprintf("TOPUP_%s_%d", topup.ID.String(), time.Now().Unix())
+	midtransOrderID := fmt.Sprintf("TOPUP_%s", topup.ID.String())
 
 	req := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{
