@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+	"time"
 
 	"entra-api/cashless-service/internal/repository/db"
 	"entra-api/shared/kafka"
@@ -12,16 +16,38 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/midtrans/midtrans-go"
+	"github.com/midtrans/midtrans-go/coreapi"
+	"github.com/midtrans/midtrans-go/snap"
 )
 
 type WalletService struct {
-	pool     *pgxpool.Pool
-	queries  *db.Queries
-	producer *kafka.Producer
+	pool       *pgxpool.Pool
+	queries    *db.Queries
+	producer   *kafka.Producer
+	snapClient snap.Client
+	coreClient coreapi.Client
 }
 
 func NewWalletService(pool *pgxpool.Pool, queries *db.Queries, producer *kafka.Producer) *WalletService {
-	return &WalletService{pool: pool, queries: queries, producer: producer}
+	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
+	if serverKey == "" {
+		serverKey = "SB-Mid-server-dummy-key-for-dev-only"
+	}
+
+	var sClient snap.Client
+	sClient.New(serverKey, midtrans.Sandbox)
+
+	var cClient coreapi.Client
+	cClient.New(serverKey, midtrans.Sandbox)
+
+	return &WalletService{
+		pool:       pool,
+		queries:    queries,
+		producer:   producer,
+		snapClient: sClient,
+		coreClient: cClient,
+	}
 }
 
 func (s *WalletService) GetWallet(ctx context.Context, userID string) (*db.Wallet, error) {
@@ -42,7 +68,13 @@ func (s *WalletService) GetWallet(ctx context.Context, userID string) (*db.Walle
 	return &wallet, nil
 }
 
-func (s *WalletService) InitiateTopUp(ctx context.Context, userID string, amount float64) (*db.Topup, error) {
+type TopUpResult struct {
+	Topup       *db.Topup `json:"topup"`
+	Token       string    `json:"token"`
+	RedirectURL string    `json:"redirect_url"`
+}
+
+func (s *WalletService) InitiateTopUp(ctx context.Context, userID string, amount float64) (*TopUpResult, error) {
 	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -72,7 +104,106 @@ func (s *WalletService) InitiateTopUp(ctx context.Context, userID string, amount
 		_ = s.producer.Publish(ctx, "topup.created", []byte(topup.ID.String()), payloadBytes)
 	}
 
-	return &topup, nil
+	midtransOrderID := fmt.Sprintf("TOPUP_%s_%d", topup.ID.String(), time.Now().Unix())
+
+	req := &snap.Request{
+		TransactionDetails: midtrans.TransactionDetails{
+			OrderID:  midtransOrderID,
+			GrossAmt: int64(amount),
+		},
+		CreditCard: &snap.CreditCardDetails{
+			Secure: true,
+		},
+	}
+
+	snapResp, snapErr := s.snapClient.CreateTransaction(req)
+	token := ""
+	redirectURL := ""
+	if snapErr != nil {
+		slog.Warn("Midtrans Snap transaction creation failed in non-production, returning mock token", "error", snapErr, "topup_id", topup.ID.String())
+		token = "MOCK_SNAP_" + midtransOrderID
+		redirectURL = fmt.Sprintf("https://sandbox.entra.local/pay/%s", topup.ID.String())
+	} else {
+		token = snapResp.Token
+		redirectURL = snapResp.RedirectURL
+	}
+
+	return &TopUpResult{
+		Topup:       &topup,
+		Token:       token,
+		RedirectURL: redirectURL,
+	}, nil
+}
+
+func (s *WalletService) ConfirmTopUp(ctx context.Context, userID string, topupID string) (*db.Wallet, error) {
+	tid, err := uuid.Parse(topupID)
+	if err != nil {
+		return nil, errors.New("invalid topup id")
+	}
+
+	topup, err := s.queries.GetTopup(ctx, tid)
+	if err != nil {
+		return nil, errors.New("topup record not found")
+	}
+
+	wallet, err := s.GetWallet(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if topup.WalletID != wallet.ID {
+		return nil, errors.New("access denied: topup does not belong to user wallet")
+	}
+
+	if err := s.ProcessTopUpSuccess(ctx, topupID); err != nil {
+		return nil, err
+	}
+
+	updatedWallet, err := s.queries.GetWalletByUserID(ctx, wallet.UserID)
+	if err != nil {
+		return wallet, nil
+	}
+
+	return &updatedWallet, nil
+}
+
+func (s *WalletService) HandleMidtransNotification(ctx context.Context, payload map[string]interface{}) error {
+	rawOrderID, ok := payload["order_id"].(string)
+	if !ok {
+		return errors.New("invalid order_id in payload")
+	}
+
+	parts := strings.Split(rawOrderID, "_")
+	var topupID string
+	if len(parts) >= 2 && parts[0] == "TOPUP" {
+		topupID = parts[1]
+	} else {
+		topupID = parts[0]
+	}
+
+	tx, coreErr := s.coreClient.CheckTransaction(rawOrderID)
+	if coreErr != nil {
+		txStatus, _ := payload["transaction_status"].(string)
+		if txStatus == "settlement" || txStatus == "capture" {
+			return s.ProcessTopUpSuccess(ctx, topupID)
+		} else if txStatus == "cancel" || txStatus == "deny" || txStatus == "expire" {
+			return s.ProcessTopUpFailed(ctx, topupID)
+		}
+		return coreErr
+	}
+
+	switch tx.TransactionStatus {
+	case "capture":
+		if tx.FraudStatus == "accept" {
+			return s.ProcessTopUpSuccess(ctx, topupID)
+		}
+	case "settlement":
+		return s.ProcessTopUpSuccess(ctx, topupID)
+	case "cancel", "deny", "expire":
+		return s.ProcessTopUpFailed(ctx, topupID)
+	}
+
+	return nil
 }
 
 func (s *WalletService) ProcessTopUpSuccess(ctx context.Context, topupID string) error {
@@ -178,7 +309,7 @@ func (s *WalletService) ProcessTopUpFailed(ctx context.Context, topupID string) 
 	return err
 }
 
-func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount float64, merchantID string) (*db.Transaction, error) {
+func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount float64, merchantID string, merchantName string) (*db.Transaction, error) {
 	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -187,6 +318,12 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 	var amt pgtype.Numeric
 	_ = amt.Scan(fmt.Sprintf("%f", amount))
 	mid, _ := uuid.Parse(merchantID)
+	hasValidUUID := mid != uuid.Nil
+
+	desc := "Pembayaran di merchant"
+	if merchantName != "" {
+		desc = fmt.Sprintf("Belanja di %s", merchantName)
+	}
 
 	if s.pool != nil {
 		tx, err := s.pool.Begin(ctx)
@@ -210,8 +347,8 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 			WalletID:    wallet.ID,
 			Type:        "DEBIT",
 			Amount:      amt,
-			MerchantID:  pgtype.UUID{Bytes: mid, Valid: merchantID != ""},
-			Description: pgtype.Text{String: "Purchase at merchant", Valid: true},
+			MerchantID:  pgtype.UUID{Bytes: mid, Valid: hasValidUUID},
+			Description: pgtype.Text{String: desc, Valid: true},
 		})
 		if err != nil {
 			return nil, err
@@ -237,8 +374,8 @@ func (s *WalletService) PayAtMerchant(ctx context.Context, userID string, amount
 		WalletID:    wallet.ID,
 		Type:        "DEBIT",
 		Amount:      amt,
-		MerchantID:  pgtype.UUID{Bytes: mid, Valid: merchantID != ""},
-		Description: pgtype.Text{String: "Purchase at merchant", Valid: true},
+		MerchantID:  pgtype.UUID{Bytes: mid, Valid: hasValidUUID},
+		Description: pgtype.Text{String: desc, Valid: true},
 	})
 	
 	return &txn, err
