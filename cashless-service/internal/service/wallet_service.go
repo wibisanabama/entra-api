@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"entra-api/cashless-service/internal/repository/db"
 	"entra-api/shared/kafka"
@@ -388,7 +389,18 @@ type RefundRequest struct {
 	Reason        string  `json:"reason"`
 }
 
-func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount float64, bankName, accountNumber, accountHolder, reason string) (*db.Transaction, error) {
+type RefundResult struct {
+	Transaction   *db.Transaction `json:"transaction"`
+	ReferenceNo   string          `json:"reference_no"`
+	BankName      string          `json:"bank_name"`
+	AccountNumber string          `json:"account_number"`
+	AccountHolder string          `json:"account_holder"`
+	Amount        float64         `json:"amount"`
+	EstimatedDays string          `json:"estimated_days"`
+	Status        string          `json:"status"`
+}
+
+func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount float64, bankName, accountNumber, accountHolder, reason string) (*RefundResult, error) {
 	wallet, err := s.GetWallet(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -397,7 +409,10 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 	var amt pgtype.Numeric
 	_ = amt.Scan(fmt.Sprintf("%f", amount))
 
-	desc := fmt.Sprintf("Refund saldo ke %s %s a/n %s", bankName, accountNumber, accountHolder)
+	refID := strings.ToUpper(strings.ReplaceAll(uuid.New().String(), "-", "")[:6])
+	refNo := fmt.Sprintf("REF-%s-%s", time.Now().Format("20060102"), refID)
+
+	desc := fmt.Sprintf("[Klaim %s] Refund saldo ke %s %s a/n %s", refNo, bankName, accountNumber, accountHolder)
 	if reason != "" {
 		desc += fmt.Sprintf(" (%s)", reason)
 	}
@@ -459,6 +474,7 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 	// Publish event to Kafka
 	if s.producer != nil {
 		payload := map[string]interface{}{
+			"reference_no":   refNo,
 			"transaction_id": txn.ID.String(),
 			"wallet_id":      wallet.ID.String(),
 			"user_id":        userID,
@@ -466,12 +482,22 @@ func (s *WalletService) RequestRefund(ctx context.Context, userID string, amount
 			"bank_name":      bankName,
 			"account_number": accountNumber,
 			"account_holder": accountHolder,
+			"status":         "PROCESSING",
 		}
 		payloadBytes, _ := json.Marshal(payload)
 		_ = s.producer.Publish(ctx, "cashless.refund", []byte(txn.ID.String()), payloadBytes)
 	}
 
-	return &txn, nil
+	return &RefundResult{
+		Transaction:   &txn,
+		ReferenceNo:   refNo,
+		BankName:      bankName,
+		AccountNumber: accountNumber,
+		AccountHolder: accountHolder,
+		Amount:        amount,
+		EstimatedDays: "1–3 Hari Kerja",
+		Status:        "PROCESSING",
+	}, nil
 }
 
 func (s *WalletService) GetTransactions(ctx context.Context, userID string) ([]db.Transaction, error) {
