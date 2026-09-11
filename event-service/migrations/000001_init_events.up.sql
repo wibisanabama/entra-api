@@ -70,14 +70,23 @@ CREATE TABLE IF NOT EXISTS ticket_types (
 
 CREATE INDEX idx_ticket_types_event_id ON ticket_types(event_id);
 
--- Seed some default categories
+-- Seed some default categories (Bahasa Indonesia)
 INSERT INTO categories (name, slug, icon) VALUES
-    ('Music', 'music', 'music'),
-    ('Sports', 'sports', 'sports'),
-    ('Arts & Culture', 'arts-culture', 'palette'),
-    ('Technology', 'technology', 'code'),
-    ('Food & Drink', 'food-drink', 'restaurant'),
-    ('Business', 'business', 'briefcase'),
-    ('Education', 'education', 'school'),
-    ('Community', 'community', 'people')
-ON CONFLICT (slug) DO NOTHING;
+    ('Konser & Musik', 'music', 'music'),
+    ('Olahraga & Kebugaran', 'sports', 'sports'),
+    ('Seni & Budaya', 'arts-culture', 'palette'),
+    ('Teknologi & Sains', 'technology', 'code'),
+    ('Kuliner & F&B', 'food-drink', 'restaurant'),
+    ('Bisnis & Karir', 'business', 'briefcase'),
+    ('Pendidikan & Workshop', 'education', 'school'),
+    ('Komunitas & Hobi', 'community', 'people'),
+    ('Pameran & Expo', 'festival-expo', 'palette'),
+    ('Seminar & Konferensi', 'seminar-konferensi', 'briefcase'),
+    ('Stand-up Comedy & Hiburan', 'hiburan-komedi', 'smile'),
+    ('Gaming & Esports', 'gaming-esports', 'gamepad'),
+    ('Keagamaan & Spiritual', 'keagamaan-spiritual', 'heart'),
+    ('Wisata & Atraksi', 'wisata-atraksi', 'compass'),
+    ('Film & Sinema', 'film-sinema', 'film'),
+    ('Keluarga & Anak-anak', 'keluarga-anak', 'users')
+ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, icon = EXCLUDED.icon;
+
