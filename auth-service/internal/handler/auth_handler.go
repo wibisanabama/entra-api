@@ -310,7 +310,12 @@ func (h *AuthHandler) UpgradeToOrganizer(c *gin.Context) {
 		return
 	}
 	
-	err := h.authService.UpgradeToOrganizer(c.Request.Context(), uidStr)
+	user, tokens, err := h.authService.UpgradeToOrganizer(
+		c.Request.Context(),
+		uidStr,
+		c.Request.UserAgent(),
+		c.ClientIP(),
+	)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			response.NotFound(c, "user not found")
@@ -320,7 +325,10 @@ func (h *AuthHandler) UpgradeToOrganizer(c *gin.Context) {
 		return
 	}
 	
-	response.Success(c, http.StatusOK, "role upgraded to organizer successfully", nil)
+	response.Success(c, http.StatusOK, "role upgraded to organizer successfully", gin.H{
+		"user":   sanitizeUser(user),
+		"tokens": tokens,
+	})
 }
 
 // GetUsersBatchRequest represents the request body for GetUsersBatch.

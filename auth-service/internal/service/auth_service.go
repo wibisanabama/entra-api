@@ -218,42 +218,46 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID string, req Upda
 	return &user, nil
 }
 
-// UpgradeToOrganizer changes a user's role to organizer after validation.
-func (s *AuthService) UpgradeToOrganizer(ctx context.Context, userID string) error {
+// UpgradeToOrganizer changes a user's role to organizer after validation and returns new tokens.
+func (s *AuthService) UpgradeToOrganizer(ctx context.Context, userID, userAgent, ipAddress string) (*db.User, *TokenPair, error) {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
-		return ErrUserNotFound
+		return nil, nil, ErrUserNotFound
 	}
 
 	user, err := s.queries.GetUserByID(ctx, pgUUIDFromUUID(uid))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrUserNotFound
+			return nil, nil, ErrUserNotFound
 		}
-		return fmt.Errorf("failed to get user: %w", err)
+		return nil, nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
 	if !user.IsActive {
-		return errors.New("inactive user cannot be upgraded to organizer")
-	}
-
-	if user.Role == "organizer" {
-		return errors.New("user is already an organizer")
+		return nil, nil, errors.New("inactive user cannot be upgraded to organizer")
 	}
 
 	if user.Role == "admin" {
-		return errors.New("admin user cannot be changed to organizer")
+		return nil, nil, errors.New("admin user cannot be changed to organizer")
 	}
 
-	err = s.queries.UpdateUserRole(ctx, db.UpdateUserRoleParams{
-		ID:   pgUUIDFromUUID(uid),
-		Role: "organizer",
-	})
+	if user.Role != "organizer" {
+		err = s.queries.UpdateUserRole(ctx, db.UpdateUserRoleParams{
+			ID:   pgUUIDFromUUID(uid),
+			Role: "organizer",
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to upgrade role: %w", err)
+		}
+		user.Role = "organizer"
+	}
+
+	tokens, err := s.generateTokenPair(ctx, &user, userAgent, ipAddress)
 	if err != nil {
-		return fmt.Errorf("failed to upgrade role: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
-	return nil
+	return &user, tokens, nil
 }
 
 // Logout deletes the refresh token.

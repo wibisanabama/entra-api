@@ -68,6 +68,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: entra-minio
+    restart: unless-stopped
     ports:
       - "9000:9000"
       - "9001:9001"
