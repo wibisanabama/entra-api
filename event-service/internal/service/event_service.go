@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,23 +52,23 @@ type UpdateEventRequest struct {
 }
 
 type CreateTicketTypeRequest struct {
-	Name        string  `json:"name" binding:"required"`
-	Description string  `json:"description"`
-	Price       float64 `json:"price"`
-	Quantity    int32   `json:"quantity" binding:"required"`
-	MaxPerOrder int32   `json:"max_per_order"`
-	SaleStart   string  `json:"sale_start" binding:"required"`
-	SaleEnd     string  `json:"sale_end" binding:"required"`
+	Name        string      `json:"name" binding:"required"`
+	Description string      `json:"description"`
+	Price       interface{} `json:"price"`
+	Quantity    int32       `json:"quantity" binding:"required"`
+	MaxPerOrder int32       `json:"max_per_order"`
+	SaleStart   string      `json:"sale_start" binding:"required"`
+	SaleEnd     string      `json:"sale_end" binding:"required"`
 }
 
 type UpdateTicketTypeRequest struct {
-	Name        string  `json:"name" binding:"required"`
-	Description string  `json:"description"`
-	Price       float64 `json:"price"`
-	Quantity    int32   `json:"quantity" binding:"required"`
-	MaxPerOrder int32   `json:"max_per_order"`
-	SaleStart   string  `json:"sale_start" binding:"required"`
-	SaleEnd     string  `json:"sale_end" binding:"required"`
+	Name        string      `json:"name" binding:"required"`
+	Description string      `json:"description"`
+	Price       interface{} `json:"price"`
+	Quantity    int32       `json:"quantity" binding:"required"`
+	MaxPerOrder int32       `json:"max_per_order"`
+	SaleStart   string      `json:"sale_start" binding:"required"`
+	SaleEnd     string      `json:"sale_end" binding:"required"`
 }
 
 type EventService struct {
@@ -271,8 +272,9 @@ func (s *EventService) CreateTicketType(ctx context.Context, organizerID, eventI
 		return nil, fmt.Errorf("invalid sale_end format: %w", err)
 	}
 
+	priceVal := parsePrice(req.Price)
 	var priceNumeric pgtype.Numeric
-	_ = priceNumeric.Scan(fmt.Sprintf("%f", req.Price))
+	_ = priceNumeric.Scan(strconv.FormatFloat(priceVal, 'f', -1, 64))
 
 	ticket, err := s.queries.CreateTicketType(ctx, db.CreateTicketTypeParams{
 		EventID:     pgEventID,
@@ -318,8 +320,9 @@ func (s *EventService) UpdateTicketType(ctx context.Context, organizerID, eventI
 		return nil, fmt.Errorf("invalid sale_end format: %w", err)
 	}
 
+	priceVal := parsePrice(req.Price)
 	var priceNumeric pgtype.Numeric
-	_ = priceNumeric.Scan(fmt.Sprintf("%f", req.Price))
+	_ = priceNumeric.Scan(strconv.FormatFloat(priceVal, 'f', -1, 64))
 
 	ticket, err := s.queries.UpdateTicketType(ctx, db.UpdateTicketTypeParams{
 		ID:          pgTicketID,
@@ -528,4 +531,24 @@ func pgInt4FromInt32(v int32) pgtype.Int4 {
 		return pgtype.Int4{Valid: false}
 	}
 	return pgtype.Int4{Int32: v, Valid: true}
+}
+
+func parsePrice(v interface{}) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int:
+		return float64(val)
+	case int32:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case string:
+		f, _ := strconv.ParseFloat(val, 64)
+		return f
+	default:
+		return 0
+	}
 }
