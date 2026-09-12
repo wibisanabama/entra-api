@@ -256,7 +256,10 @@ func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, 
 	}
 	amount := val.Float64
 
-	midtransOrderID := fmt.Sprintf("%s_%d", order.ID.String(), time.Now().Unix())
+	// Format order_id for Midtrans (Strictly max 50 chars).
+	// "ORD_" (4) + compact 32-char UUID + "_" (1) + 10-char Unix timestamp = 47 chars <= 50 limit.
+	compactUUID := strings.ReplaceAll(order.ID.String(), "-", "")
+	midtransOrderID := fmt.Sprintf("ORD_%s_%d", compactUUID, time.Now().Unix())
 
 	req := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{
@@ -328,9 +331,20 @@ func (s *TicketService) HandleMidtransNotification(ctx context.Context, payload 
 		return errors.New("invalid order_id in payload")
 	}
 	
-	// Extract the real order ID (before the _)
+	// Extract the real order ID (handle both ORD_<compact>_<ts> and <uuid>_<ts>)
 	parts := strings.Split(rawOrderID, "_")
-	orderID := parts[0]
+	var orderIDStr string
+	if len(parts) >= 2 && parts[0] == "ORD" {
+		orderIDStr = parts[1]
+	} else {
+		orderIDStr = parts[0]
+	}
+
+	orderUUID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid order_id in notification %q: %w", rawOrderID, err)
+	}
+	orderID := orderUUID.String()
     
 	tx, coreErr := s.coreClient.CheckTransaction(rawOrderID)
 	if coreErr != nil {

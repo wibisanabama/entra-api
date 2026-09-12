@@ -104,7 +104,10 @@ func (s *WalletService) InitiateTopUp(ctx context.Context, userID string, amount
 		_ = s.producer.Publish(ctx, "topup.created", []byte(topup.ID.String()), payloadBytes)
 	}
 
-	midtransOrderID := fmt.Sprintf("TOPUP_%s", topup.ID.String())
+	// Format order_id for Midtrans (Strictly max 50 chars).
+	// "TP_" (3) + compact 32-char UUID + "_" (1) + 10-char Unix timestamp = 46 chars <= 50 limit.
+	compactUUID := strings.ReplaceAll(topup.ID.String(), "-", "")
+	midtransOrderID := fmt.Sprintf("TP_%s_%d", compactUUID, time.Now().Unix())
 
 	req := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{
@@ -174,12 +177,18 @@ func (s *WalletService) HandleMidtransNotification(ctx context.Context, payload 
 	}
 
 	parts := strings.Split(rawOrderID, "_")
-	var topupID string
-	if len(parts) >= 2 && parts[0] == "TOPUP" {
-		topupID = parts[1]
+	var topupIDStr string
+	if len(parts) >= 2 && (parts[0] == "TOPUP" || parts[0] == "TP") {
+		topupIDStr = parts[1]
 	} else {
-		topupID = parts[0]
+		topupIDStr = parts[0]
 	}
+
+	topupUUID, err := uuid.Parse(topupIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid topup id in notification order_id %q: %w", rawOrderID, err)
+	}
+	topupID := topupUUID.String()
 
 	tx, coreErr := s.coreClient.CheckTransaction(rawOrderID)
 	if coreErr != nil {
