@@ -27,8 +27,8 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	// Load .env file if exists
-	_ = godotenv.Load()
+	// Load .env file if exists (root .env and auth-service/.env)
+	_ = godotenv.Load(".env", "auth-service/.env")
 
 	// Load config
 	cfg := config.Load()

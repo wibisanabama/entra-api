@@ -57,6 +57,7 @@ type SMTPConfig struct {
 	Port     string
 	Username string
 	Password string
+	From     string
 }
 
 // DSN returns the PostgreSQL connection string.
@@ -105,6 +106,7 @@ func Load() *Config {
 			Port:     getEnv("SMTP_PORT", "2525"),
 			Username: getEnv("SMTP_USER", ""),
 			Password: getEnv("SMTP_PASS", ""),
+			From:     getEnv("SMTP_FROM", "noreply@entra.id"),
 		},
 	}
 }

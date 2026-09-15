@@ -225,19 +225,34 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 			frontendURL = "http://localhost:3000"
 		}
 		resetURL := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(frontendURL, "/"), token)
-		subject := "Subject: Reset Password Anda\r\n"
-		mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
+		
+		senderEmail := h.smtpConfig.From
+		if senderEmail == "" {
+			if strings.Contains(h.smtpConfig.Username, "@") {
+				senderEmail = h.smtpConfig.Username
+			} else {
+				senderEmail = "noreply@entra.id"
+			}
+		}
+
+		headers := fmt.Sprintf("From: Entra Support <%s>\r\nTo: %s\r\nSubject: Reset Password Akun Entra\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=\"UTF-8\"\r\n\r\n", senderEmail, req.Email)
 		body := fmt.Sprintf(`<html>
-			<body>
-				<h2>Reset Password</h2>
-				<p>Seseorang telah meminta untuk mereset password akun Anda di Entra.</p>
-				<p>Silakan klik tautan di bawah ini untuk mereset password Anda:</p>
-				<p><a href="%s">Reset Password</a></p>
-				<p>Jika Anda tidak meminta reset password, Anda dapat mengabaikan email ini.</p>
+			<body style="font-family: Arial, sans-serif; color: #18181b; line-height: 1.6; background-color: #f4f4f5; padding: 24px;">
+				<div style="max-width: 520px; margin: 0 auto; background-color: #ffffff; padding: 32px; border-radius: 20px;">
+					<h2 style="margin-top: 0; color: #09090b; font-size: 22px;">Reset Password Entra</h2>
+					<p>Halo,</p>
+					<p>Kami menerima permintaan untuk mengatur ulang kata sandi akun Entra Anda.</p>
+					<p style="margin: 28px 0;">
+						<a href="%s" style="background-color: #09090b; color: #ffffff; padding: 14px 28px; border-radius: 9999px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 14px;">
+							Atur Ulang Kata Sandi
+						</a>
+					</p>
+					<p style="font-size: 13px; color: #71717a;">Tautan ini berlaku selama 30 menit. Jika Anda tidak meminta pembaruan kata sandi, abaikan email ini dengan aman.</p>
+				</div>
 			</body>
 		</html>`, resetURL)
 		
-		msg := []byte(subject + mime + body)
+		msg := []byte(headers + body)
 		
 		// If username/password is empty, it might be a local test server without auth
 		var auth smtp.Auth
@@ -249,13 +264,11 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		
 		// Run in background so it doesn't block response
 		go func() {
-			senderEmail := h.smtpConfig.Username
-			if senderEmail == "" {
-				senderEmail = "noreply@entra.local" // fallback for local testing
-			}
 			err := smtp.SendMail(addr, auth, senderEmail, []string{req.Email}, msg)
 			if err != nil {
-				fmt.Printf("Error sending email: %v\n", err)
+				fmt.Printf("Error sending email to %s: %v\n", req.Email, err)
+			} else {
+				fmt.Printf("Successfully sent reset password email to %s via %s\n", req.Email, addr)
 			}
 		}()
 	}
