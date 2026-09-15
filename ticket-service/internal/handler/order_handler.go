@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -133,7 +134,8 @@ func (h *OrderHandler) MidtransWebhook(c *gin.Context) {
 
 	err := h.ticketService.HandleMidtransNotification(c.Request.Context(), payload)
 	if err != nil {
-		// Log the error but return 200 to acknowledge receipt to Midtrans
+		slog.Error("midtrans webhook handling failed", "error", err, "payload", payload)
+		// Return 200 to acknowledge receipt to Midtrans even if processing had an issue
 		response.Success(c, http.StatusOK, "webhook received but encountered error", nil)
 		return
 	}

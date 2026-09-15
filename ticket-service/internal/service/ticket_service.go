@@ -346,22 +346,41 @@ func (s *TicketService) HandleMidtransNotification(ctx context.Context, payload 
 	}
 	orderID := orderUUID.String()
     
+	txStatus, _ := payload["transaction_status"].(string)
+	fraudStatus, _ := payload["fraud_status"].(string)
+
 	tx, coreErr := s.coreClient.CheckTransaction(rawOrderID)
-	if coreErr != nil {
-		return coreErr
+	if coreErr == nil && tx != nil {
+		txStatus = tx.TransactionStatus
+		fraudStatus = tx.FraudStatus
+	} else {
+		slog.Warn("midtrans CheckTransaction returned error, falling back to payload status",
+			"error", coreErr,
+			"raw_order_id", rawOrderID,
+			"payload_status", txStatus,
+		)
 	}
 
-	switch tx.TransactionStatus {
+	// If transaction_status is empty but Midtrans reported 200/201 (e.g. from frontend callback)
+	if txStatus == "" {
+		if statusCode, ok := payload["status_code"].(string); ok && (statusCode == "200" || statusCode == "201") {
+			txStatus = "settlement"
+		}
+	}
+
+	switch txStatus {
 	case "capture":
-		if tx.FraudStatus == "challenge" {
-			// Do nothing or mark as challenge
-		} else if tx.FraudStatus == "accept" {
+		if fraudStatus == "challenge" {
+			slog.Info("midtrans payment challenged", "order_id", orderID)
+		} else {
 			return s.HandlePaymentSuccess(ctx, orderID)
 		}
-	case "settlement":
+	case "settlement", "success":
 		return s.HandlePaymentSuccess(ctx, orderID)
 	case "cancel", "deny", "expire":
 		return s.HandlePaymentFailed(ctx, orderID)
+	default:
+		slog.Warn("unhandled or pending transaction status in midtrans notification", "status", txStatus, "order_id", orderID)
 	}
 
 	return nil
