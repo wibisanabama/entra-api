@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"entra-api/auth-service/internal/repository/db"
@@ -79,10 +80,16 @@ type UpdateProfileRequest struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
+type rotatedTokenEntry struct {
+	tokens    *TokenPair
+	expiresAt time.Time
+}
+
 // AuthService handles authentication business logic.
 type AuthService struct {
-	queries *db.Queries
-	cfg     *config.Config
+	queries         *db.Queries
+	cfg             *config.Config
+	recentRotations sync.Map // string (oldToken) -> rotatedTokenEntry
 }
 
 // NewAuthService creates a new AuthService.
@@ -158,6 +165,15 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest, userAgent, ip
 
 // RefreshToken validates a refresh token and issues new tokens.
 func (s *AuthService) RefreshToken(ctx context.Context, req RefreshRequest, userAgent, ipAddress string) (*TokenPair, error) {
+	// Check if this refresh token was recently rotated (within 30s grace window)
+	if val, ok := s.recentRotations.Load(req.RefreshToken); ok {
+		entry := val.(rotatedTokenEntry)
+		if time.Now().Before(entry.expiresAt) {
+			return entry.tokens, nil
+		}
+		s.recentRotations.Delete(req.RefreshToken)
+	}
+
 	rt, err := s.queries.GetRefreshToken(ctx, req.RefreshToken)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -174,8 +190,20 @@ func (s *AuthService) RefreshToken(ctx context.Context, req RefreshRequest, user
 		return nil, ErrUserNotFound
 	}
 
-	return s.generateTokenPair(ctx, &user, userAgent, ipAddress)
+	tokens, err := s.generateTokenPair(ctx, &user, userAgent, ipAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store in grace window cache for 30 seconds to absorb concurrent client requests / retries
+	s.recentRotations.Store(req.RefreshToken, rotatedTokenEntry{
+		tokens:    tokens,
+		expiresAt: time.Now().Add(30 * time.Second),
+	})
+
+	return tokens, nil
 }
+
 
 // GetProfile returns the user profile by ID.
 func (s *AuthService) GetProfile(ctx context.Context, userID string) (*db.User, error) {
