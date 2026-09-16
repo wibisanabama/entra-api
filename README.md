@@ -1,122 +1,145 @@
 # Entra API
 
-Backend Entra untuk pengelolaan event, pemesanan tiket, pembayaran, check-in, dan transaksi cashless. Digunakan oleh Entra Web dan Entra App.
+Repositori backend berbasis arsitektur microservices untuk platform manajemen event, pemesanan tiket, sistem pembayaran, validasi gate check-in, dan transaksi cashless Entra.
 
-## Teknologi
+## Arsitektur Layanan
 
-Go 1.26.4, Gin, PostgreSQL 16, Redis 7, Kafka, MinIO, dan sqlc.
+Sistem terbagi ke dalam tujuh layanan independen yang berkomunikasi melalui REST API dan Apache Kafka:
 
-## Layanan
-
-| Layanan | Port bawaan | Tanggung jawab |
+| Layanan | Port | Deskripsi Fungsional |
 | --- | --- | --- |
-| auth-service | 8081 | Akun, autentikasi JWT, profil, dan peran pengguna |
-| event-service | 8082 | Event, venue, kategori, jenis tiket, dan kuota |
-| ticket-service | 8083 | Pesanan, tiket, Midtrans, statistik, dan withdrawal |
-| payment-service | 8084 | Payment intent dan simulasi pembayaran |
-| cashless-service | 8085 | Dompet, top-up, pembayaran merchant, dan permintaan refund |
-| gate-service | 8086 | Validasi tiket dan check-in |
-| storage-service | 8087 | Unggah dan daftar media di MinIO |
+| `auth-service` | 8081 | Autentikasi JWT, manajemen akun, profil pengguna, dan kontrol akses berbasis peran (RBAC) |
+| `event-service` | 8082 | Pengelolaan data event, kategori, kuota, dan tier tiket |
+| `ticket-service` | 8083 | Pemesanan tiket, integrasi payment gateway Midtrans, dan penarikan dana organizer |
+| `payment-service` | 8084 | Manajemen payment intent dan pemrosesan status pembayaran |
+| `cashless-service` | 8085 | Pengelolaan dompet digital, top-up saldo, transaksi point-of-sale, dan pengajuan refund |
+| `gate-service` | 8086 | Pemindaian tiket QR, validasi akses pintu masuk, dan pencegahan tiket ganda |
+| `storage-service` | 8087 | Manajemen unggah dan distribusi media melalui object storage MinIO |
 
-Komunikasi antarlayanan menggunakan HTTP dan Kafka. Enam layanan memiliki database PostgreSQL terpisah; storage-service menggunakan MinIO.
+## Prasyarat Sistem
 
-## Prasyarat
+- Go versi 1.22 atau lebih baru
+- Docker dan Docker Compose
+- CLI golang-migrate (untuk migrasi database lokal)
+- Git
 
-- Go 1.26.4 atau lebih baru.
-- Docker dengan Docker Compose.
-- CLI golang-migrate dengan dukungan PostgreSQL.
-- PowerShell untuk contoh perintah berikut.
-- sqlc jika mengubah query SQL; kode hasil generasi sudah tersedia.
+## Konfigurasi Lingkungan
 
-## Menjalankan secara lokal
-
-### 1. Unduh dan siapkan konfigurasi
+Salin berkas contoh konfigurasi lingkungan pada direktori utama:
 
 ```powershell
-git clone https://github.com/wibisanabama/entra-api.git
-cd entra-api
 Copy-Item .env.example .env
 ```
 
-Lewati penyalinan jika `.env` sudah ada. Sesuaikan nilainya dan ganti `JWT_SECRET` serta `INTERNAL_SERVICE_SECRET`. Semua layanan harus menggunakan nilai secret yang sama.
+Sesuaikan parameter berikut pada berkas `.env`:
 
-Tidak semua layanan memuat `.env` secara otomatis. Agar konfigurasi berlaku konsisten, jalankan blok berikut pada setiap terminal sebelum menjalankan layanan:
+| Parameter | Keterangan | Nilai Bawaan |
+| --- | --- | --- |
+| `JWT_SECRET` | Kunci enkripsi token autentikasi pengguna | Wajib diisi |
+| `INTERNAL_SERVICE_SECRET` | Kunci autentikasi komunikasi antarlayanan | Wajib diisi |
+| `MIDTRANS_SERVER_KEY` | Kunci server payment gateway Midtrans | Sesuai akun Midtrans |
+| `MIDTRANS_CLIENT_KEY` | Kunci client payment gateway Midtrans | Sesuai akun Midtrans |
+| `SMTP_HOST` | Host server SMTP untuk email reset kata sandi | sandbox.smtp.mailtrap.io |
+| `SMTP_PORT` | Port server SMTP | 2525 |
+| `SMTP_USER` | Nama pengguna autentikasi SMTP | Sesuai akun SMTP |
+| `SMTP_PASS` | Kata sandi autentikasi SMTP | Sesuai akun SMTP |
+| `SMTP_FROM` | Alamat pengirim email sistem | noreply@entra.id |
 
-```powershell
-Get-Content .env | ForEach-Object {
-    $line = $_.Trim()
-    if ($line -and -not $line.StartsWith('#')) {
-        $pair = $line -split '=', 2
-        if ($pair.Count -eq 2) {
-            [Environment]::SetEnvironmentVariable($pair[0].Trim(), $pair[1].Trim(), 'Process')
-        }
-    }
-}
-```
+## Menjalankan Sistem
 
-Gunakan format `KEY=value` tanpa tanda kutip atau komentar di akhir baris.
+### 1. Menjalankan Infrastruktur
 
-### 2. Jalankan infrastruktur dan migrasi
+Jalankan container PostgreSQL, Redis, Kafka, Zookeeper, dan MinIO menggunakan Docker Compose:
 
 ```powershell
 docker compose up -d
+```
+
+Pastikan seluruh container dalam status berjalan:
+
+```powershell
 docker compose ps
 ```
 
-Compose hanya menjalankan PostgreSQL, Redis, Kafka, Zookeeper, dan MinIO, bukan layanan Go. Database dibuat saat volume PostgreSQL pertama kali diinisialisasi. Tunggu infrastruktur siap, lalu jalankan:
+### 2. Menjalankan Migrasi Database
+
+Jalankan migrasi skema database untuk setiap layanan yang memiliki database relasional:
 
 ```powershell
-foreach ($service in @('auth', 'event', 'ticket', 'payment', 'cashless', 'gate')) {
-    $database = [Environment]::GetEnvironmentVariable("POSTGRES_DB_$($service.ToUpper())")
-    $dsn = "postgres://$($env:POSTGRES_USER):$($env:POSTGRES_PASSWORD)@$($env:POSTGRES_HOST):$($env:POSTGRES_PORT)/$($database)?sslmode=$($env:POSTGRES_SSLMODE)"
-    migrate -path "./$service-service/migrations" -database $dsn up
-    if ($LASTEXITCODE -ne 0) { throw "Migrasi $service gagal" }
+$services = @('auth', 'event', 'ticket', 'payment', 'cashless', 'gate')
+foreach ($svc in $services) {
+    $dbName = "entra_$svc"
+    $dsn = "postgres://entra:entra_secret@localhost:5432/$($dbName)?sslmode=disable"
+    migrate -path "./$svc-service/migrations" -database $dsn up
 }
 ```
 
-Nilai koneksi PostgreSQL harus sesuai dengan `docker-compose.yml`. Jika kredensial mengandung karakter khusus URI, gunakan DSN dengan kredensial yang sudah di-URL-encode.
+### 3. Menjalankan Layanan
 
-### 3. Jalankan layanan
-
-Dari root repositori, jalankan setiap perintah di terminal terpisah setelah memuat environment:
+Setiap layanan dijalankan dari direktori root repositori pada terminal terpisah:
 
 ```powershell
+# Jalankan auth-service
 go run ./auth-service/cmd/api
+
+# Jalankan event-service
 go run ./event-service/cmd/api
+
+# Jalankan ticket-service
 go run ./ticket-service/cmd/api
+
+# Jalankan payment-service
 go run ./payment-service/cmd/api
+
+# Jalankan cashless-service
 go run ./cashless-service/cmd/api
+
+# Jalankan gate-service
 go run ./gate-service/cmd/api
+
+# Jalankan storage-service
 go run ./storage-service/cmd/api
 ```
 
-Endpoint menggunakan awalan `/api/v1`. Definisi rute tersedia di `internal/handler/routes.go` pada masing-masing layanan.
+Seluruh endpoint layanan menggunakan awalan jalur `/api/v1`. Health check tersedia pada jalur `/health` untuk masing-masing port layanan.
 
-## Integrasi
+## Kompilasi dan Pengujian
 
-- Pembayaran tiket memakai Midtrans Sandbox. Tambahkan `MIDTRANS_SERVER_KEY` ke environment untuk checkout.
-- payment-service menyediakan simulasi; URL payment intent yang dibuatnya bukan halaman pembayaran aktif.
-- Pengiriman email memerlukan `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, dan `SMTP_PASS`.
-- `STORAGE_PUBLIC_URL` harus dapat diakses browser atau perangkat yang menampilkan media.
-- Permintaan internal menggunakan header `X-Internal-Secret`; permintaan pengguna menggunakan JWT Bearer.
-
-## Build dan pengujian
+### Kompilasi Semua Layanan
 
 ```powershell
 go build ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/... ./cashless-service/... ./gate-service/... ./storage-service/... ./shared/...
+```
+
+### Menjalankan Unit Test
+
+```powershell
 go test ./auth-service/... ./event-service/... ./ticket-service/... ./payment-service/... ./cashless-service/... ./gate-service/... ./storage-service/... ./shared/...
 ```
 
-Untuk memperbarui kode query, jalankan `sqlc generate` dari direktori layanan yang memiliki `sqlc.yaml`. Jangan mengedit hasil generasi secara langsung.
+### Regenerasi Kode SQL (sqlc)
 
-## Struktur
+Jika terdapat perubahan query SQL, regenerasi kode dilakukan melalui direktori masing-masing layanan yang memiliki konfigurasi `sqlc.yaml`:
 
-- `<nama>-service/cmd/api/`: entry point layanan.
-- `<nama>-service/internal/handler/`: rute dan handler HTTP.
-- `<nama>-service/internal/service/`: logika bisnis.
-- `<nama>-service/internal/repository/`: query SQL dan kode hasil sqlc.
-- `<nama>-service/migrations/`: migrasi database.
-- `shared/`: konfigurasi, middleware, database, Kafka, dan respons API.
-- `scripts/`: inisialisasi database.
+```powershell
+cd <nama-service>
+sqlc generate
+```
 
-Konfigurasi Compose dan integrasi pembayaran saat ini ditujukan untuk pengembangan lokal, bukan konfigurasi produksi.
+## Struktur Direktori
+
+```text
+entra-api/
+├── auth-service/        # Layanan autentikasi dan otorisasi pengguna
+├── event-service/       # Layanan katalog dan manajemen event
+├── ticket-service/      # Layanan transaksi tiket dan penarikan saldo
+├── payment-service/     # Layanan payment intent dan siklus pembayaran
+├── cashless-service/    # Layanan dompet digital dan transaksi merchant
+├── gate-service/        # Layanan validasi pintu masuk dan check-in QR
+├── storage-service/     # Layanan integrasi media MinIO
+├── shared/              # Pustaka bersama (konfigurasi, middleware, Kafka, model respons)
+├── scripts/             # Skrip utilitas basis data
+├── docker-compose.yml   # Definisi kontainer infrastruktur lokal
+├── go.work              # Konfigurasi Go multi-module workspace
+└── Makefile             # Otomasi tugas pengembangan
+```
