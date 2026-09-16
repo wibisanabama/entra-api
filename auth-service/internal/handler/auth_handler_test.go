@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"entra-api/auth-service/internal/handler"
+	"entra-api/shared/config"
 	"entra-api/shared/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -20,12 +21,7 @@ func init() {
 }
 
 func TestAuthHandler_GetUsersBatch_Validation(t *testing.T) {
-	h := handler.NewAuthHandler(nil, struct {
-		Host     string
-		Port     string
-		Username string
-		Password string
-	}{})
+	h := handler.NewAuthHandler(nil, config.SMTPConfig{})
 
 	r := gin.New()
 	r.POST("/api/v1/internal/users/batch", h.GetUsersBatch)
@@ -68,12 +64,7 @@ func TestAuthHandler_GetUsersBatch_Validation(t *testing.T) {
 }
 
 func TestAuthHandler_Profile_UnauthorizedWithoutContext(t *testing.T) {
-	h := handler.NewAuthHandler(nil, struct {
-		Host     string
-		Port     string
-		Username string
-		Password string
-	}{})
+	h := handler.NewAuthHandler(nil, config.SMTPConfig{})
 
 	r := gin.New()
 	r.GET("/api/v1/auth/profile", h.GetProfile)
@@ -131,12 +122,7 @@ func TestAuthHandler_RoutesSetup(t *testing.T) {
 	_ = os.Setenv("INTERNAL_SERVICE_SECRET", "internal-test-secret")
 	defer os.Unsetenv("INTERNAL_SERVICE_SECRET")
 
-	h := handler.NewAuthHandler(nil, struct {
-		Host     string
-		Port     string
-		Username string
-		Password string
-	}{})
+	h := handler.NewAuthHandler(nil, config.SMTPConfig{})
 
 	r := gin.New()
 	handler.RegisterRoutes(r, h, jwtSecret)
