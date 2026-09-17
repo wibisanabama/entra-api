@@ -32,12 +32,26 @@ type UpdateWithdrawalStatusRequest struct {
 }
 
 type OrganizerBalanceResponse struct {
-	TotalRevenue     float64 `json:"total_revenue"`
-	TotalWithdrawn   float64 `json:"total_withdrawn"`
-	AvailableBalance float64 `json:"available_balance"`
-	PendingAmount    float64 `json:"pending_amount"`
-	PaidAmount       float64 `json:"paid_amount"`
-	TotalRequests    int64   `json:"total_requests"`
+	GrossRevenue       float64 `json:"gross_revenue"`
+	PlatformFeePercent float64 `json:"platform_fee_percent"`
+	PlatformFeeAmount  float64 `json:"platform_fee_amount"`
+	NetRevenue         float64 `json:"net_revenue"`
+	TotalRevenue       float64 `json:"total_revenue"`
+	TotalWithdrawn     float64 `json:"total_withdrawn"`
+	AvailableBalance   float64 `json:"available_balance"`
+	PendingAmount      float64 `json:"pending_amount"`
+	PaidAmount         float64 `json:"paid_amount"`
+	TotalRequests      int64   `json:"total_requests"`
+}
+
+type AdminPlatformStatsResponse struct {
+	TotalGMV             float64 `json:"total_gmv"`
+	PlatformFeePercent   float64 `json:"platform_fee_percent"`
+	TotalPlatformRevenue float64 `json:"total_platform_revenue"`
+	TotalWithdrawnPaid   float64 `json:"total_withdrawn_paid"`
+	PendingWithdrawals   float64 `json:"pending_withdrawals"`
+	TotalPaidOrdersCount int64   `json:"total_paid_orders_count"`
+	PendingRequestsCount int64   `json:"pending_requests_count"`
 }
 
 func float64ToNumeric(val float64) pgtype.Numeric {
@@ -60,13 +74,19 @@ func (s *TicketService) GetOrganizerBalance(ctx context.Context, organizerID str
 		return nil, fmt.Errorf("invalid organizer id: %w", err)
 	}
 
-	// 1. Get total revenue from successful orders across all events of this organizer
+	// 1. Get gross revenue from successful orders across all events of this organizer
 	stats, err := s.GetDashboardStats(ctx, organizerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch organizer stats: %w", err)
 	}
 
-	totalRevenue := numericToFloat64(stats.TotalRevenue)
+	grossRevenue := numericToFloat64(stats.TotalRevenue)
+	feePercent := s.GetPlatformFeePercent()
+	feeAmount := grossRevenue * (feePercent / 100.0)
+	netRevenue := grossRevenue - feeAmount
+	if netRevenue < 0 {
+		netRevenue = 0
+	}
 
 	// 2. Get withdrawal summary for this organizer
 	summary, err := s.queries.GetWithdrawnSummaryByOrganizer(ctx, orgUUID)
@@ -77,18 +97,22 @@ func (s *TicketService) GetOrganizerBalance(ctx context.Context, organizerID str
 	totalWithdrawn := numericToFloat64(summary.TotalDeducted)
 	pendingAmount := numericToFloat64(summary.PendingAmount)
 	paidAmount := numericToFloat64(summary.PaidAmount)
-	availableBalance := totalRevenue - totalWithdrawn
+	availableBalance := netRevenue - totalWithdrawn
 	if availableBalance < 0 {
 		availableBalance = 0
 	}
 
 	return &OrganizerBalanceResponse{
-		TotalRevenue:     totalRevenue,
-		TotalWithdrawn:   totalWithdrawn,
-		AvailableBalance: availableBalance,
-		PendingAmount:    pendingAmount,
-		PaidAmount:       paidAmount,
-		TotalRequests:    summary.TotalRequests,
+		GrossRevenue:       grossRevenue,
+		PlatformFeePercent: feePercent,
+		PlatformFeeAmount:  feeAmount,
+		NetRevenue:         netRevenue,
+		TotalRevenue:       netRevenue,
+		TotalWithdrawn:     totalWithdrawn,
+		AvailableBalance:   availableBalance,
+		PendingAmount:      pendingAmount,
+		PaidAmount:         paidAmount,
+		TotalRequests:      summary.TotalRequests,
 	}, nil
 }
 
@@ -116,12 +140,18 @@ func (s *TicketService) RequestWithdrawal(ctx context.Context, organizerID strin
 
 		qtx := s.queries.WithTx(tx)
 
-		// 1. Get total revenue from successful orders
+		// 1. Get gross revenue from successful orders
 		stats, err := s.GetDashboardStats(ctx, organizerID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch organizer stats: %w", err)
 		}
-		totalRevenue := numericToFloat64(stats.TotalRevenue)
+		grossRevenue := numericToFloat64(stats.TotalRevenue)
+		feePercent := s.GetPlatformFeePercent()
+		feeAmount := grossRevenue * (feePercent / 100.0)
+		netRevenue := grossRevenue - feeAmount
+		if netRevenue < 0 {
+			netRevenue = 0
+		}
 
 		// 2. Get withdrawal summary within transaction
 		summary, err := qtx.GetWithdrawnSummaryByOrganizer(ctx, orgUUID)
@@ -130,7 +160,7 @@ func (s *TicketService) RequestWithdrawal(ctx context.Context, organizerID strin
 		}
 
 		totalWithdrawn := numericToFloat64(summary.TotalDeducted)
-		availableBalance := totalRevenue - totalWithdrawn
+		availableBalance := netRevenue - totalWithdrawn
 		if availableBalance < 0 {
 			availableBalance = 0
 		}
@@ -274,3 +304,33 @@ func (s *TicketService) AdminUpdateWithdrawalStatus(ctx context.Context, withdra
 
 	return &updated, nil
 }
+
+func (s *TicketService) GetAdminPlatformStats(ctx context.Context) (*AdminPlatformStatsResponse, error) {
+	gmvRow, err := s.queries.GetPlatformTotalGMV(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch platform GMV: %w", err)
+	}
+
+	totalGMV := numericToFloat64(gmvRow.TotalGmv)
+	feePercent := s.GetPlatformFeePercent()
+	totalPlatformRevenue := totalGMV * (feePercent / 100.0)
+
+	withdrawalSummary, err := s.queries.GetPlatformWithdrawalSummary(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch platform withdrawal summary: %w", err)
+	}
+
+	totalWithdrawnPaid := numericToFloat64(withdrawalSummary.TotalPaidAmount)
+	pendingWithdrawals := numericToFloat64(withdrawalSummary.PendingAmount)
+
+	return &AdminPlatformStatsResponse{
+		TotalGMV:             totalGMV,
+		PlatformFeePercent:   feePercent,
+		TotalPlatformRevenue: totalPlatformRevenue,
+		TotalWithdrawnPaid:   totalWithdrawnPaid,
+		PendingWithdrawals:   pendingWithdrawals,
+		TotalPaidOrdersCount: gmvRow.TotalPaidOrders,
+		PendingRequestsCount: withdrawalSummary.PendingCount,
+	}, nil
+}
+

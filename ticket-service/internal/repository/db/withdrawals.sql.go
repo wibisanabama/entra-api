@@ -62,6 +62,34 @@ func (q *Queries) CreateWithdrawal(ctx context.Context, arg CreateWithdrawalPara
 	return i, err
 }
 
+const getPlatformWithdrawalSummary = `-- name: GetPlatformWithdrawalSummary :one
+SELECT 
+    COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount ELSE 0 END), 0)::numeric as total_paid_amount,
+    COALESCE(SUM(CASE WHEN status = 'PENDING' THEN amount ELSE 0 END), 0)::numeric as pending_amount,
+    COALESCE(COUNT(CASE WHEN status = 'PENDING' THEN 1 END), 0)::bigint as pending_count,
+    COALESCE(COUNT(*), 0)::bigint as total_requests
+FROM withdrawals
+`
+
+type GetPlatformWithdrawalSummaryRow struct {
+	TotalPaidAmount pgtype.Numeric `json:"total_paid_amount"`
+	PendingAmount   pgtype.Numeric `json:"pending_amount"`
+	PendingCount    int64          `json:"pending_count"`
+	TotalRequests   int64          `json:"total_requests"`
+}
+
+func (q *Queries) GetPlatformWithdrawalSummary(ctx context.Context) (GetPlatformWithdrawalSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getPlatformWithdrawalSummary)
+	var i GetPlatformWithdrawalSummaryRow
+	err := row.Scan(
+		&i.TotalPaidAmount,
+		&i.PendingAmount,
+		&i.PendingCount,
+		&i.TotalRequests,
+	)
+	return i, err
+}
+
 const getTotalWithdrawnByOrganizer = `-- name: GetTotalWithdrawnByOrganizer :one
 SELECT 
     COALESCE(SUM(amount), 0)::numeric as total_withdrawn

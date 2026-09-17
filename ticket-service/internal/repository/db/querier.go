@@ -20,6 +20,8 @@ type Querier interface {
 	GetExpiredPendingOrders(ctx context.Context) ([]Order, error)
 	GetOrder(ctx context.Context, id uuid.UUID) (Order, error)
 	GetOrganizerStats(ctx context.Context, dollar_1 []uuid.UUID) (GetOrganizerStatsRow, error)
+	GetPlatformTotalGMV(ctx context.Context) (GetPlatformTotalGMVRow, error)
+	GetPlatformWithdrawalSummary(ctx context.Context) (GetPlatformWithdrawalSummaryRow, error)
 	GetTicket(ctx context.Context, id uuid.UUID) (Ticket, error)
 	GetTicketByCode(ctx context.Context, ticketCode string) (Ticket, error)
 	GetTotalWithdrawnByOrganizer(ctx context.Context, organizerID uuid.UUID) (pgtype.Numeric, error)

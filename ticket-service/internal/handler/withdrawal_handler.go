@@ -191,3 +191,25 @@ func (h *WithdrawalHandler) AdminUpdateWithdrawalStatus(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "withdrawal status updated", updated)
 }
+
+// GetAdminPlatformStats handles GET /api/v1/tickets/admin/stats/platform
+func (h *WithdrawalHandler) GetAdminPlatformStats(c *gin.Context) {
+	role, exists := c.Get(middleware.AuthUserRoleKey)
+	if !exists {
+		role, exists = c.Get("role")
+	}
+	roleStr, ok := role.(string)
+	if !exists || !ok || roleStr != "admin" {
+		response.Forbidden(c, "insufficient permissions: admin role required")
+		return
+	}
+
+	stats, err := h.ticketService.GetAdminPlatformStats(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "failed to get platform stats: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "platform stats retrieved", stats)
+}
+

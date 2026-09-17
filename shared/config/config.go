@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -15,7 +16,14 @@ type Config struct {
 	Kafka    KafkaConfig
 	JWT      JWTConfig
 	SMTP     SMTPConfig
+	Platform PlatformConfig
 }
+
+// PlatformConfig holds platform-level business configuration.
+type PlatformConfig struct {
+	FeePercent float64
+}
+
 
 // ServerConfig holds server-specific configuration.
 type ServerConfig struct {
@@ -76,6 +84,11 @@ func Load() *Config {
 	accessExpiry, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
 	refreshExpiry, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "168h"))
 
+	platformFeePercent, err := strconv.ParseFloat(getEnv("PLATFORM_FEE_PERCENT", "5.0"), 64)
+	if err != nil || platformFeePercent < 0 {
+		platformFeePercent = 5.0
+	}
+
 	return &Config{
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
@@ -107,6 +120,9 @@ func Load() *Config {
 			Username: getEnv("SMTP_USER", ""),
 			Password: getEnv("SMTP_PASS", ""),
 			From:     getEnv("SMTP_FROM", "noreply@entra.id"),
+		},
+		Platform: PlatformConfig{
+			FeePercent: platformFeePercent,
 		},
 	}
 }

@@ -53,6 +53,7 @@ func RegisterRoutes(r *gin.Engine, oh *OrderHandler, th *TicketHandler, wh *With
 		{
 			admin.GET("/withdrawals", wh.AdminListWithdrawals)
 			admin.PATCH("/withdrawals/:id/status", wh.AdminUpdateWithdrawalStatus)
+			admin.GET("/stats/platform", wh.GetAdminPlatformStats)
 		}
 	}
 }

@@ -196,6 +196,26 @@ func (q *Queries) GetOrganizerStats(ctx context.Context, dollar_1 []uuid.UUID) (
 	return i, err
 }
 
+const getPlatformTotalGMV = `-- name: GetPlatformTotalGMV :one
+SELECT 
+    COALESCE(SUM(total_amount), 0)::numeric as total_gmv,
+    COALESCE(COUNT(id), 0)::bigint as total_paid_orders
+FROM orders 
+WHERE status IN ('PAID', 'SUKSES')
+`
+
+type GetPlatformTotalGMVRow struct {
+	TotalGmv        pgtype.Numeric `json:"total_gmv"`
+	TotalPaidOrders int64          `json:"total_paid_orders"`
+}
+
+func (q *Queries) GetPlatformTotalGMV(ctx context.Context) (GetPlatformTotalGMVRow, error) {
+	row := q.db.QueryRow(ctx, getPlatformTotalGMV)
+	var i GetPlatformTotalGMVRow
+	err := row.Scan(&i.TotalGmv, &i.TotalPaidOrders)
+	return i, err
+}
+
 const listOrderItems = `-- name: ListOrderItems :many
 SELECT id, order_id, ticket_type_id, quantity, price, subtotal FROM order_items WHERE order_id = $1
 `

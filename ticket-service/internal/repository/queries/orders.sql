@@ -47,3 +47,11 @@ WHERE event_id = ANY($1::uuid[]) AND status IN ('PAID', 'SUKSES')
   AND created_at >= NOW() - INTERVAL '30 days'
 GROUP BY DATE(created_at)
 ORDER BY sale_date ASC;
+
+-- name: GetPlatformTotalGMV :one
+SELECT 
+    COALESCE(SUM(total_amount), 0)::numeric as total_gmv,
+    COALESCE(COUNT(id), 0)::bigint as total_paid_orders
+FROM orders 
+WHERE status IN ('PAID', 'SUKSES');
+

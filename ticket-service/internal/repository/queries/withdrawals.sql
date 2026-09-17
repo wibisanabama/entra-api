@@ -55,3 +55,12 @@ SELECT * FROM withdrawals
 WHERE status = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: GetPlatformWithdrawalSummary :one
+SELECT 
+    COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount ELSE 0 END), 0)::numeric as total_paid_amount,
+    COALESCE(SUM(CASE WHEN status = 'PENDING' THEN amount ELSE 0 END), 0)::numeric as pending_amount,
+    COALESCE(COUNT(CASE WHEN status = 'PENDING' THEN 1 END), 0)::bigint as pending_count,
+    COALESCE(COUNT(*), 0)::bigint as total_requests
+FROM withdrawals;
+

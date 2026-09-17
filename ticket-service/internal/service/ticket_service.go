@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,18 +26,26 @@ import (
 )
 
 type TicketService struct {
-	pool        *pgxpool.Pool
-	queries     *db.Queries
-	eventClient *client.EventClient
-	producer    *kafka.Producer
-	snapClient  snap.Client
-	coreClient  coreapi.Client
+	pool               *pgxpool.Pool
+	queries            *db.Queries
+	eventClient        *client.EventClient
+	producer           *kafka.Producer
+	snapClient         snap.Client
+	coreClient         coreapi.Client
+	platformFeePercent float64
 }
 
 func NewTicketService(pool *pgxpool.Pool, queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer) *TicketService {
 	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
 	if serverKey == "" {
 		serverKey = "SB-Mid-server-dummy-key-for-dev-only" // Use placeholder if not set in env
+	}
+
+	platformFee := 5.0
+	if feeEnv := os.Getenv("PLATFORM_FEE_PERCENT"); feeEnv != "" {
+		if val, err := strconv.ParseFloat(feeEnv, 64); err == nil && val >= 0 {
+			platformFee = val
+		}
 	}
 
 	var sClient snap.Client
@@ -46,14 +55,27 @@ func NewTicketService(pool *pgxpool.Pool, queries *db.Queries, eventClient *clie
 	cClient.New(serverKey, midtrans.Sandbox)
 
 	return &TicketService{
-		pool:        pool,
-		queries:     queries,
-		eventClient: eventClient,
-		producer:    producer,
-		snapClient:  sClient,
-		coreClient:  cClient,
+		pool:               pool,
+		queries:            queries,
+		eventClient:        eventClient,
+		producer:           producer,
+		snapClient:         sClient,
+		coreClient:         cClient,
+		platformFeePercent: platformFee,
 	}
 }
+
+func (s *TicketService) GetPlatformFeePercent() float64 {
+	if s.platformFeePercent <= 0 {
+		return 5.0
+	}
+	return s.platformFeePercent
+}
+
+func (s *TicketService) SetPlatformFeePercent(fee float64) {
+	s.platformFeePercent = fee
+}
+
 
 type CreateOrderRequest struct {
 	EventID      string  `json:"event_id" binding:"required"`
