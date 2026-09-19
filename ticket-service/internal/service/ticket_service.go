@@ -31,6 +31,10 @@ var (
 	ErrSoldOut                  = errors.New("tiket telah habis terjual")
 	ErrActivePendingOrderExists = errors.New("anda masih memiliki pesanan yang belum diselesaikan untuk event ini")
 	ErrOrderProcessing          = errors.New("pesanan Anda sedang diproses, silakan tunggu")
+	ErrSaleEnded                = errors.New("periode penjualan tiket untuk kategori ini telah berakhir")
+	ErrSaleNotStarted           = errors.New("penjualan tiket untuk kategori ini belum dimulai")
+	ErrEventEnded               = errors.New("event ini telah berakhir")
+	ErrTicketInactive           = errors.New("kategori tiket sedang tidak aktif")
 )
 
 var reserveStockLua = redis.NewScript(`
@@ -142,6 +146,19 @@ func (s *TicketService) ReserveTicketStock(ctx context.Context, ticketTypeID str
 		if getErr != nil {
 			return int32(0), getErr
 		}
+		now := time.Now()
+		if tt.SaleEnd != nil && now.After(*tt.SaleEnd) {
+			return int32(0), ErrSaleEnded
+		}
+		if tt.SaleStart != nil && now.Before(*tt.SaleStart) {
+			return int32(0), ErrSaleNotStarted
+		}
+		if tt.EventEndDate != nil && now.After(*tt.EventEndDate) {
+			return int32(0), ErrEventEnded
+		}
+		if !tt.IsActive {
+			return int32(0), ErrTicketInactive
+		}
 		avail := tt.Quantity - tt.Sold
 		if avail < 0 {
 			avail = 0
@@ -237,6 +254,44 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 		}
 	}
 
+	// 2.5 Check ticket validity & expiration if eventClient configured
+	if s.eventClient != nil {
+		tt, ttErr := s.eventClient.GetTicketType(ctx, req.TicketTypeID)
+		if ttErr == nil && tt != nil {
+			now := time.Now()
+			if !tt.IsActive {
+				if redisIdempotencyKey != "" && s.redisClient != nil {
+					s.redisClient.Del(ctx, redisIdempotencyKey)
+				}
+				return nil, ErrTicketInactive
+			}
+			if tt.SaleStart != nil && now.Before(*tt.SaleStart) {
+				if redisIdempotencyKey != "" && s.redisClient != nil {
+					s.redisClient.Del(ctx, redisIdempotencyKey)
+				}
+				return nil, ErrSaleNotStarted
+			}
+			if tt.SaleEnd != nil && now.After(*tt.SaleEnd) {
+				if redisIdempotencyKey != "" && s.redisClient != nil {
+					s.redisClient.Del(ctx, redisIdempotencyKey)
+				}
+				return nil, ErrSaleEnded
+			}
+			if tt.EventEndDate != nil && now.After(*tt.EventEndDate) {
+				if redisIdempotencyKey != "" && s.redisClient != nil {
+					s.redisClient.Del(ctx, redisIdempotencyKey)
+				}
+				return nil, ErrEventEnded
+			}
+			if tt.EventStatus != "" && tt.EventStatus != "published" {
+				if redisIdempotencyKey != "" && s.redisClient != nil {
+					s.redisClient.Del(ctx, redisIdempotencyKey)
+				}
+				return nil, errors.New("event is not published or active")
+			}
+		}
+	}
+
 	// 3. Reserve ticket stock atomically via Redis Lua
 	if err := s.ReserveTicketStock(ctx, req.TicketTypeID, req.Quantity); err != nil {
 		if redisIdempotencyKey != "" && s.redisClient != nil {
@@ -244,6 +299,9 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 		}
 		if errors.Is(err, ErrSoldOut) {
 			return nil, ErrSoldOut
+		}
+		if errors.Is(err, ErrSaleEnded) || errors.Is(err, ErrSaleNotStarted) || errors.Is(err, ErrEventEnded) || errors.Is(err, ErrTicketInactive) {
+			return nil, err
 		}
 		slog.Error("failed to reserve tickets", "error", err)
 		return nil, errors.New("failed to reserve tickets, might be sold out")

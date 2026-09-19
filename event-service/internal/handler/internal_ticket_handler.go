@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"entra-api/event-service/internal/repository/db"
 	"entra-api/shared/response"
@@ -38,9 +39,44 @@ func (h *InternalTicketHandler) ReserveTickets(c *gin.Context) {
 		return
 	}
 
-	// In a real app we might want to do this in a transaction if reserving multiple ticket types,
-	// but here we reserve one type at a time.
 	pgID := pgtype.UUID{Bytes: ticketTypeID, Valid: true}
+	ticketType, err := h.queries.GetTicketTypeByID(c.Request.Context(), pgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(c, http.StatusNotFound, "ticket type not found")
+			return
+		}
+		response.InternalError(c, "failed to get ticket type")
+		return
+	}
+
+	if !ticketType.IsActive {
+		response.Error(c, http.StatusConflict, "ticket type is not active")
+		return
+	}
+
+	now := time.Now()
+	if ticketType.SaleStart.Valid && now.Before(ticketType.SaleStart.Time) {
+		response.Error(c, http.StatusConflict, "ticket sales have not started yet")
+		return
+	}
+	if ticketType.SaleEnd.Valid && now.After(ticketType.SaleEnd.Time) {
+		response.Error(c, http.StatusConflict, "ticket sales period has ended")
+		return
+	}
+
+	event, err := h.queries.GetEventByID(c.Request.Context(), ticketType.EventID)
+	if err == nil {
+		if event.Status != "published" {
+			response.Error(c, http.StatusConflict, "event is not published")
+			return
+		}
+		if event.EndDate.Valid && now.After(event.EndDate.Time) {
+			response.Error(c, http.StatusConflict, "event has already ended")
+			return
+		}
+	}
+
 	ticket, err := h.queries.IncrementTicketSold(c.Request.Context(), db.IncrementTicketSoldParams{
 		ID:   pgID,
 		Sold: int32(req.Quantity),
@@ -105,6 +141,34 @@ func (h *InternalTicketHandler) GetTicketType(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, "ticket type retrieved", ticket)
+	event, _ := h.queries.GetEventByID(c.Request.Context(), ticket.EventID)
+
+	var saleStart *time.Time
+	if ticket.SaleStart.Valid {
+		saleStart = &ticket.SaleStart.Time
+	}
+	var saleEnd *time.Time
+	if ticket.SaleEnd.Valid {
+		saleEnd = &ticket.SaleEnd.Time
+	}
+	var eventEndDate *time.Time
+	if event.EndDate.Valid {
+		eventEndDate = &event.EndDate.Time
+	}
+
+	data := gin.H{
+		"id":             uuid.UUID(ticket.ID.Bytes).String(),
+		"event_id":       uuid.UUID(ticket.EventID.Bytes).String(),
+		"name":           ticket.Name,
+		"quantity":       ticket.Quantity,
+		"sold":           ticket.Sold,
+		"is_active":      ticket.IsActive,
+		"sale_start":     saleStart,
+		"sale_end":       saleEnd,
+		"event_status":   event.Status,
+		"event_end_date": eventEndDate,
+	}
+
+	response.Success(c, http.StatusOK, "ticket type retrieved", data)
 }
 

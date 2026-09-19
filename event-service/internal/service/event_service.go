@@ -321,6 +321,9 @@ func (s *EventService) CreateTicketType(ctx context.Context, organizerID, eventI
 
 	if s.redisClient != nil {
 		avail := ticket.Quantity - ticket.Sold
+		if ticket.SaleEnd.Valid && time.Now().After(ticket.SaleEnd.Time) {
+			avail = 0
+		}
 		if avail < 0 {
 			avail = 0
 		}
@@ -377,6 +380,9 @@ func (s *EventService) UpdateTicketType(ctx context.Context, organizerID, eventI
 
 	if s.redisClient != nil {
 		avail := ticket.Quantity - ticket.Sold
+		if ticket.SaleEnd.Valid && time.Now().After(ticket.SaleEnd.Time) {
+			avail = 0
+		}
 		if avail < 0 {
 			avail = 0
 		}

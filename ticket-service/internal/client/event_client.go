@@ -61,11 +61,16 @@ func (c *EventClient) sendReservationRequest(ctx context.Context, url string, qu
 }
 
 type InternalTicketType struct {
-	ID       string `json:"id"`
-	EventID  string `json:"event_id"`
-	Name     string `json:"name"`
-	Quantity int32  `json:"quantity"`
-	Sold     int32  `json:"sold"`
+	ID           string     `json:"id"`
+	EventID      string     `json:"event_id"`
+	Name         string     `json:"name"`
+	Quantity     int32      `json:"quantity"`
+	Sold         int32      `json:"sold"`
+	IsActive     bool       `json:"is_active"`
+	SaleStart    *time.Time `json:"sale_start"`
+	SaleEnd      *time.Time `json:"sale_end"`
+	EventStatus  string     `json:"event_status"`
+	EventEndDate *time.Time `json:"event_end_date"`
 }
 
 type GetTicketTypeResponse struct {

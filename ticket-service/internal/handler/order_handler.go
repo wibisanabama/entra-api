@@ -49,6 +49,10 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 			response.Error(c, http.StatusConflict, err.Error())
 			return
 		}
+		if errors.Is(err, service.ErrSaleEnded) || errors.Is(err, service.ErrSaleNotStarted) || errors.Is(err, service.ErrEventEnded) || errors.Is(err, service.ErrTicketInactive) {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
 		if errors.Is(err, service.ErrOrderProcessing) {
 			response.Error(c, http.StatusTooManyRequests, err.Error())
 			return
