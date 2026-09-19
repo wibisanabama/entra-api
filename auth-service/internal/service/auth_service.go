@@ -230,11 +230,19 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID string, req Upda
 		return nil, ErrUserNotFound
 	}
 
+	avatarUrl := pgTextFromString(req.AvatarURL)
+	if req.AvatarURL == "" {
+		existingUser, err := s.queries.GetUserByID(ctx, pgUUIDFromUUID(uid))
+		if err == nil && existingUser.AvatarUrl.Valid {
+			avatarUrl = existingUser.AvatarUrl
+		}
+	}
+
 	user, err := s.queries.UpdateUserProfile(ctx, db.UpdateUserProfileParams{
 		ID:        pgUUIDFromUUID(uid),
 		FullName:  req.FullName,
 		Phone:     pgTextFromString(req.Phone),
-		AvatarUrl: pgTextFromString(req.AvatarURL),
+		AvatarUrl: avatarUrl,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
