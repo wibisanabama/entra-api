@@ -86,3 +86,25 @@ func (h *InternalTicketHandler) ReleaseTickets(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "tickets released", ticket)
 }
+
+func (h *InternalTicketHandler) GetTicketType(c *gin.Context) {
+	ticketTypeID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.ValidationError(c, "invalid ticket type id")
+		return
+	}
+
+	pgID := pgtype.UUID{Bytes: ticketTypeID, Valid: true}
+	ticket, err := h.queries.GetTicketTypeByID(c.Request.Context(), pgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.NotFound(c, "ticket type not found")
+			return
+		}
+		response.InternalError(c, "failed to get ticket type")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "ticket type retrieved", ticket)
+}
+

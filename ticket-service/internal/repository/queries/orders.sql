@@ -55,3 +55,8 @@ SELECT
 FROM orders 
 WHERE status IN ('PAID', 'SUKSES');
 
+-- name: GetActivePendingOrderByUserAndEvent :one
+SELECT * FROM orders 
+WHERE user_id = $1 AND event_id = $2 AND status = 'PENDING' AND expires_at > NOW()
+LIMIT 1;
+

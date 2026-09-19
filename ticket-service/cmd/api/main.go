@@ -53,9 +53,18 @@ func main() {
 	eventServiceURL := getEnv("EVENT_SERVICE_URL", "http://localhost:8082")
 	eventClient := client.NewEventClient(eventServiceURL)
 
+	// Redis Client
+	redisClient, err := database.NewRedisClient(ctx, cfg.Redis)
+	if err != nil {
+		logger.Warn("failed to connect to redis, operating without redis cache", slog.String("error", err.Error()))
+	} else {
+		defer redisClient.Close()
+		logger.Info("connected to Redis")
+	}
+
 	// Layers
 	queries := db.New(pool)
-	ticketService := service.NewTicketService(pool, queries, eventClient, producer)
+	ticketService := service.NewTicketService(pool, queries, eventClient, producer, redisClient)
 	orderHandler := handler.NewOrderHandler(ticketService)
 	ticketHandler := handler.NewTicketHandler(ticketService)
 	withdrawalHandler := handler.NewWithdrawalHandler(ticketService)

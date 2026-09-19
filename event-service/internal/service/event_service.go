@@ -140,6 +140,35 @@ func (s *EventService) invalidateEventCache(ctx context.Context, eventID string)
 	}
 }
 
+func stringFromPgUUID(u pgtype.UUID) string {
+	if !u.Valid {
+		return ""
+	}
+	return uuid.UUID(u.Bytes).String()
+}
+
+func (s *EventService) PrewarmTicketStock(ctx context.Context, eventID string) {
+	if s.redisClient == nil || eventID == "" {
+		return
+	}
+	pgEventID := pgUUIDFromString(eventID)
+	if !pgEventID.Valid {
+		return
+	}
+	ticketTypes, err := s.queries.ListTicketTypesByEvent(ctx, pgEventID)
+	if err != nil {
+		return
+	}
+	for _, tt := range ticketTypes {
+		avail := tt.Quantity - tt.Sold
+		if avail < 0 {
+			avail = 0
+		}
+		_ = s.redisClient.Set(ctx, fmt.Sprintf("ticket_stock:%s", stringFromPgUUID(tt.ID)), avail, 0).Err()
+	}
+}
+
+
 func (s *EventService) GetEvent(ctx context.Context, idOrSlug string) (*db.Event, error) {
 	cacheKey := fmt.Sprintf("event:%s", idOrSlug)
 	
@@ -290,6 +319,14 @@ func (s *EventService) CreateTicketType(ctx context.Context, organizerID, eventI
 		return nil, fmt.Errorf("failed to create ticket type: %w", err)
 	}
 
+	if s.redisClient != nil {
+		avail := ticket.Quantity - ticket.Sold
+		if avail < 0 {
+			avail = 0
+		}
+		_ = s.redisClient.Set(ctx, fmt.Sprintf("ticket_stock:%s", stringFromPgUUID(ticket.ID)), avail, 0).Err()
+	}
+
 	return &ticket, nil
 }
 
@@ -336,6 +373,14 @@ func (s *EventService) UpdateTicketType(ctx context.Context, organizerID, eventI
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update ticket type: %w", err)
+	}
+
+	if s.redisClient != nil {
+		avail := ticket.Quantity - ticket.Sold
+		if avail < 0 {
+			avail = 0
+		}
+		_ = s.redisClient.Set(ctx, fmt.Sprintf("ticket_stock:%s", stringFromPgUUID(ticket.ID)), avail, 0).Err()
 	}
 
 	return &ticket, nil
@@ -418,6 +463,10 @@ func (s *EventService) UpdateEvent(ctx context.Context, eventID, organizerID str
 
 	// Invalidate Cache
 	s.invalidateEventCache(ctx, eventID)
+
+	if strings.ToLower(status) == "published" {
+		s.PrewarmTicketStock(ctx, eventID)
+	}
 
 	return &event, nil
 }

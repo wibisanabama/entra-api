@@ -60,3 +60,45 @@ func (c *EventClient) sendReservationRequest(ctx context.Context, url string, qu
 	return nil
 }
 
+type InternalTicketType struct {
+	ID       string `json:"id"`
+	EventID  string `json:"event_id"`
+	Name     string `json:"name"`
+	Quantity int32  `json:"quantity"`
+	Sold     int32  `json:"sold"`
+}
+
+type GetTicketTypeResponse struct {
+	Success bool               `json:"success"`
+	Data    InternalTicketType `json:"data"`
+}
+
+func (c *EventClient) GetTicketType(ctx context.Context, ticketTypeID string) (*InternalTicketType, error) {
+	url := fmt.Sprintf("%s/api/v1/internal/tickets/%s", c.baseURL, ticketTypeID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if secret := os.Getenv("INTERNAL_SERVICE_SECRET"); secret != "" {
+		req.Header.Set("X-Internal-Secret", secret)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get ticket type, status: %d", resp.StatusCode)
+	}
+
+	var res GetTicketTypeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	return &res.Data, nil
+}
+
+

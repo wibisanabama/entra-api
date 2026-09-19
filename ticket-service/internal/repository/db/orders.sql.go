@@ -83,6 +83,33 @@ func (q *Queries) CreateOrderItem(ctx context.Context, arg CreateOrderItemParams
 	return i, err
 }
 
+const getActivePendingOrderByUserAndEvent = `-- name: GetActivePendingOrderByUserAndEvent :one
+SELECT id, user_id, event_id, total_amount, status, expires_at, created_at, updated_at FROM orders 
+WHERE user_id = $1 AND event_id = $2 AND status = 'PENDING' AND expires_at > NOW()
+LIMIT 1
+`
+
+type GetActivePendingOrderByUserAndEventParams struct {
+	UserID  uuid.UUID `json:"user_id"`
+	EventID uuid.UUID `json:"event_id"`
+}
+
+func (q *Queries) GetActivePendingOrderByUserAndEvent(ctx context.Context, arg GetActivePendingOrderByUserAndEventParams) (Order, error) {
+	row := q.db.QueryRow(ctx, getActivePendingOrderByUserAndEvent, arg.UserID, arg.EventID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.EventID,
+		&i.TotalAmount,
+		&i.Status,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getDailySalesTrend = `-- name: GetDailySalesTrend :many
 SELECT 
     DATE(created_at) as sale_date,

@@ -23,7 +23,39 @@ import (
 	"github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/coreapi"
 	"github.com/midtrans/midtrans-go/snap"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 )
+
+var (
+	ErrSoldOut                  = errors.New("tiket telah habis terjual")
+	ErrActivePendingOrderExists = errors.New("anda masih memiliki pesanan yang belum diselesaikan untuk event ini")
+	ErrOrderProcessing          = errors.New("pesanan Anda sedang diproses, silakan tunggu")
+)
+
+var reserveStockLua = redis.NewScript(`
+local stock = tonumber(redis.call('GET', KEYS[1]))
+if stock == nil then
+    return -1
+end
+local qty = tonumber(ARGV[1])
+if stock >= qty then
+    redis.call('DECRBY', KEYS[1], qty)
+    return 1
+else
+    return 0
+end
+`)
+
+var releaseStockLua = redis.NewScript(`
+local exists = redis.call('EXISTS', KEYS[1])
+if exists == 1 then
+    redis.call('INCRBY', KEYS[1], ARGV[1])
+    return 1
+else
+    return 0
+end
+`)
 
 type TicketService struct {
 	pool               *pgxpool.Pool
@@ -33,9 +65,11 @@ type TicketService struct {
 	snapClient         snap.Client
 	coreClient         coreapi.Client
 	platformFeePercent float64
+	redisClient        *redis.Client
+	sf                 singleflight.Group
 }
 
-func NewTicketService(pool *pgxpool.Pool, queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer) *TicketService {
+func NewTicketService(pool *pgxpool.Pool, queries *db.Queries, eventClient *client.EventClient, producer *kafka.Producer, redisClient *redis.Client) *TicketService {
 	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
 	if serverKey == "" {
 		serverKey = "SB-Mid-server-dummy-key-for-dev-only" // Use placeholder if not set in env
@@ -62,6 +96,7 @@ func NewTicketService(pool *pgxpool.Pool, queries *db.Queries, eventClient *clie
 		snapClient:         sClient,
 		coreClient:         cClient,
 		platformFeePercent: platformFee,
+		redisClient:        redisClient,
 	}
 }
 
@@ -76,12 +111,83 @@ func (s *TicketService) SetPlatformFeePercent(fee float64) {
 	s.platformFeePercent = fee
 }
 
+func (s *TicketService) ReserveTicketStock(ctx context.Context, ticketTypeID string, quantity int32) error {
+	if s.redisClient == nil {
+		if s.eventClient != nil {
+			return s.eventClient.ReserveTickets(ctx, ticketTypeID, quantity)
+		}
+		return nil
+	}
+
+	redisKey := fmt.Sprintf("ticket_stock:%s", ticketTypeID)
+	res, err := reserveStockLua.Run(ctx, s.redisClient, []string{redisKey}, quantity).Int()
+	if err == nil {
+		if res == 1 {
+			if s.eventClient != nil {
+				_ = s.eventClient.ReserveTickets(ctx, ticketTypeID, quantity)
+			}
+			return nil
+		}
+		if res == 0 {
+			return ErrSoldOut
+		}
+	}
+
+	// Cache miss (-1) or Redis error: use singleflight to load stock
+	v, sfErr, _ := s.sf.Do("load_stock:"+ticketTypeID, func() (interface{}, error) {
+		if s.eventClient == nil {
+			return int32(0), errors.New("event client not configured")
+		}
+		tt, getErr := s.eventClient.GetTicketType(ctx, ticketTypeID)
+		if getErr != nil {
+			return int32(0), getErr
+		}
+		avail := tt.Quantity - tt.Sold
+		if avail < 0 {
+			avail = 0
+		}
+		s.redisClient.Set(ctx, redisKey, avail, 0)
+		return avail, nil
+	})
+	if sfErr != nil {
+		if s.eventClient != nil {
+			return s.eventClient.ReserveTickets(ctx, ticketTypeID, quantity)
+		}
+		return sfErr
+	}
+
+	availStock, _ := v.(int32)
+	if availStock < quantity {
+		return ErrSoldOut
+	}
+
+	retryRes, retryErr := reserveStockLua.Run(ctx, s.redisClient, []string{redisKey}, quantity).Int()
+	if retryErr == nil && retryRes == 1 {
+		if s.eventClient != nil {
+			_ = s.eventClient.ReserveTickets(ctx, ticketTypeID, quantity)
+		}
+		return nil
+	}
+
+	return ErrSoldOut
+}
+
+func (s *TicketService) ReleaseTicketStock(ctx context.Context, ticketTypeID string, quantity int32) {
+	if s.redisClient != nil {
+		redisKey := fmt.Sprintf("ticket_stock:%s", ticketTypeID)
+		_ = releaseStockLua.Run(ctx, s.redisClient, []string{redisKey}, quantity).Err()
+	}
+	if s.eventClient != nil {
+		_ = s.eventClient.ReleaseTickets(ctx, ticketTypeID, quantity)
+	}
+}
 
 type CreateOrderRequest struct {
-	EventID      string  `json:"event_id" binding:"required"`
-	TicketTypeID string  `json:"ticket_type_id" binding:"required"`
-	Quantity     int32   `json:"quantity" binding:"required,min=1"`
-	Price        float64 `json:"price" binding:"required"`
+	EventID        string  `json:"event_id" binding:"required"`
+	TicketTypeID   string  `json:"ticket_type_id" binding:"required"`
+	Quantity       int32   `json:"quantity" binding:"required,min=1"`
+	Price          float64 `json:"price" binding:"required"`
+	IdempotencyKey string  `json:"idempotency_key"`
 }
 
 func (s *TicketService) CreateOrder(ctx context.Context, userID string, req CreateOrderRequest) (*db.Order, error) {
@@ -98,16 +204,53 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 		return nil, errors.New("invalid ticket type id")
 	}
 
-	// 1. Reserve ticket via event-service
-	if err := s.eventClient.ReserveTickets(ctx, req.TicketTypeID, req.Quantity); err != nil {
+	// 1. Guard against duplicate pending orders for the same user and event
+	existingPending, err := s.queries.GetActivePendingOrderByUserAndEvent(ctx, db.GetActivePendingOrderByUserAndEventParams{
+		UserID:  uid,
+		EventID: eid,
+	})
+	if err == nil && existingPending.ID != uuid.Nil {
+		return nil, ErrActivePendingOrderExists
+	}
+
+	// 2. Idempotency Check
+	idempotencyKey := req.IdempotencyKey
+	var redisIdempotencyKey string
+	if idempotencyKey != "" && s.redisClient != nil {
+		redisIdempotencyKey = fmt.Sprintf("order:idempotency:%s", idempotencyKey)
+		cachedVal, getErr := s.redisClient.Get(ctx, redisIdempotencyKey).Result()
+		if getErr == nil {
+			if cachedVal == "PROCESSING" {
+				return nil, ErrOrderProcessing
+			}
+			if orderUUID, parseErr := uuid.Parse(cachedVal); parseErr == nil {
+				cachedOrder, fetchErr := s.queries.GetOrder(ctx, orderUUID)
+				if fetchErr == nil {
+					return &cachedOrder, nil
+				}
+			}
+		}
+
+		ok, setErr := s.redisClient.SetNX(ctx, redisIdempotencyKey, "PROCESSING", 5*time.Minute).Result()
+		if setErr == nil && !ok {
+			return nil, ErrOrderProcessing
+		}
+	}
+
+	// 3. Reserve ticket stock atomically via Redis Lua
+	if err := s.ReserveTicketStock(ctx, req.TicketTypeID, req.Quantity); err != nil {
+		if redisIdempotencyKey != "" && s.redisClient != nil {
+			s.redisClient.Del(ctx, redisIdempotencyKey)
+		}
+		if errors.Is(err, ErrSoldOut) {
+			return nil, ErrSoldOut
+		}
 		slog.Error("failed to reserve tickets", "error", err)
 		return nil, errors.New("failed to reserve tickets, might be sold out")
 	}
 
-	// 2. Create Order
+	// 4. Create Order in PostgreSQL
 	subtotal := float64(req.Quantity) * req.Price
-	
-	// Convert float64 to pgtype.Numeric correctly
 	var totalNumeric pgtype.Numeric
 	_ = totalNumeric.Scan(fmt.Sprintf("%f", subtotal))
 
@@ -120,16 +263,19 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 	})
 	if err != nil {
 		// Rollback reservation
-		_ = s.eventClient.ReleaseTickets(ctx, req.TicketTypeID, req.Quantity)
+		s.ReleaseTicketStock(ctx, req.TicketTypeID, req.Quantity)
+		if redisIdempotencyKey != "" && s.redisClient != nil {
+			s.redisClient.Del(ctx, redisIdempotencyKey)
+		}
 		return nil, err
 	}
 
-	// 3. Create Order Item
+	// 5. Create Order Item
 	_, err = s.queries.CreateOrderItem(ctx, db.CreateOrderItemParams{
 		OrderID:      order.ID,
 		TicketTypeID: tid,
 		Quantity:     req.Quantity,
-		Price:        totalNumeric, // for simplicity, assuming total == price * qty 
+		Price:        totalNumeric,
 		Subtotal:     totalNumeric,
 	})
 	if err != nil {
@@ -138,11 +284,19 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 			ID:     order.ID,
 			Status: "CANCELLED",
 		})
-		_ = s.eventClient.ReleaseTickets(ctx, req.TicketTypeID, req.Quantity)
+		s.ReleaseTicketStock(ctx, req.TicketTypeID, req.Quantity)
+		if redisIdempotencyKey != "" && s.redisClient != nil {
+			s.redisClient.Del(ctx, redisIdempotencyKey)
+		}
 		return nil, errors.New("failed to initialize order items")
 	}
 
-	// 4. Publish Kafka Event
+	// 6. Cache successful order in idempotency key
+	if redisIdempotencyKey != "" && s.redisClient != nil {
+		s.redisClient.Set(ctx, redisIdempotencyKey, order.ID.String(), 24*time.Hour)
+	}
+
+	// 7. Publish Kafka Event
 	eventPayload := map[string]interface{}{
 		"order_id": order.ID.String(),
 		"user_id":  userID,
@@ -235,7 +389,7 @@ func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 
 	// Release all tickets back to inventory
 	for _, item := range items {
-		_ = s.eventClient.ReleaseTickets(ctx, item.TicketTypeID.String(), item.Quantity)
+		s.ReleaseTicketStock(ctx, item.TicketTypeID.String(), item.Quantity)
 	}
 
 	// Publish Kafka Event

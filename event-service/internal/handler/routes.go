@@ -22,6 +22,7 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 	{
 		internal.POST("/tickets/:id/reserve", ith.ReserveTickets)
 		internal.POST("/tickets/:id/release", ith.ReleaseTickets)
+		internal.GET("/tickets/:id", ith.GetTicketType)
 		internal.GET("/organizer/:id/events", eh.GetInternalEventIDs)
 	}
 

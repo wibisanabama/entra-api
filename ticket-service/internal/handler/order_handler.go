@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -34,8 +35,24 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+	if req.IdempotencyKey == "" {
+		req.IdempotencyKey = c.GetHeader("Idempotency-Key")
+	}
+
 	order, err := h.ticketService.CreateOrder(c.Request.Context(), uidStr, req)
 	if err != nil {
+		if errors.Is(err, service.ErrSoldOut) {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrActivePendingOrderExists) {
+			response.Error(c, http.StatusConflict, err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrOrderProcessing) {
+			response.Error(c, http.StatusTooManyRequests, err.Error())
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}
