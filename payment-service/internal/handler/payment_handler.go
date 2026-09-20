@@ -49,22 +49,3 @@ func (h *PaymentHandler) GetPaymentByReference(c *gin.Context) {
 	response.Success(c, http.StatusOK, "payment found", payment)
 }
 
-type SimulateRequest struct {
-	Status string `json:"status" binding:"required,oneof=SUCCESS FAILED"`
-}
-
-func (h *PaymentHandler) SimulatePayment(c *gin.Context) {
-	var req SimulateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.ValidationError(c, err.Error())
-		return
-	}
-
-	payment, err := h.paymentService.SimulatePayment(c.Request.Context(), c.Param("id"), req.Status)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	response.Success(c, http.StatusOK, "payment simulated", payment)
-}

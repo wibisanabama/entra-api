@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -55,50 +54,6 @@ func (s *PaymentService) CreatePaymentIntent(ctx context.Context, referenceID, r
 	}
 
 	return nil
-}
-
-func (s *PaymentService) SimulatePayment(ctx context.Context, paymentID string, status string) (*db.Payment, error) {
-	pid, err := uuid.Parse(paymentID)
-	if err != nil {
-		return nil, err
-	}
-
-	payment, err := s.queries.GetPayment(ctx, pid)
-	if err != nil {
-		return nil, err
-	}
-
-	if payment.Status != "PENDING" {
-		return nil, fmt.Errorf("payment already processed")
-	}
-
-	if status != "SUCCESS" && status != "FAILED" {
-		return nil, fmt.Errorf("invalid status")
-	}
-
-	updated, err := s.queries.UpdatePaymentStatus(ctx, pid, status)
-	if err != nil {
-		return nil, err
-	}
-
-	// Publish event back to originating service
-	payload := map[string]interface{}{
-		"reference_id":   payment.ReferenceID.String(),
-		"reference_type": payment.ReferenceType,
-		"status":         status,
-	}
-	// Also populate order_id for backward compatibility with ticket-service, or just refactor ticket service to read reference_id if needed.
-	// But it's cleaner if ticket service expects reference_id and reference_type now. We'll update ticket service.
-	payloadBytes, _ := json.Marshal(payload)
-
-	topic := "payment.success"
-	if status == "FAILED" {
-		topic = "payment.failed"
-	}
-
-	_ = s.producer.Publish(ctx, topic, []byte(payment.ReferenceID.String()), payloadBytes)
-
-	return &updated, nil
 }
 
 func (s *PaymentService) HandleReferenceCancelled(ctx context.Context, referenceID, referenceType string) error {
