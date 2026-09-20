@@ -49,7 +49,5 @@ func RegisterRoutes(r *gin.Engine, eh *EventHandler, vh *VenueHandler, ch *Categ
 		protected.DELETE("/events/:id/tickets/:ticket_id", tth.Delete)
 
 		protected.POST("/venues", vh.Create)
-		protected.PUT("/venues/:id", vh.Update)
-		protected.DELETE("/venues/:id", vh.Delete)
 	}
 }

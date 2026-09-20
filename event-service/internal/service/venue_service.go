@@ -25,17 +25,6 @@ type CreateVenueRequest struct {
 	Description string  `json:"description"`
 }
 
-type UpdateVenueRequest struct {
-	Name        string  `json:"name" binding:"required,min=3"`
-	Address     string  `json:"address" binding:"required"`
-	City        string  `json:"city" binding:"required"`
-	Province    string  `json:"province"`
-	Country     string  `json:"country"`
-	Latitude    float64 `json:"latitude"`
-	Longitude   float64 `json:"longitude"`
-	Capacity    int32   `json:"capacity"`
-	Description string  `json:"description"`
-}
 
 type VenueService struct {
 	queries *db.Queries
@@ -111,60 +100,6 @@ func (s *VenueService) ListVenues(ctx context.Context, page, perPage int) ([]db.
 	return venues, total, nil
 }
 
-func (s *VenueService) UpdateVenue(ctx context.Context, venueID, organizerID string, req UpdateVenueRequest) (*db.Venue, error) {
-	pgID := pgUUIDFromString(venueID)
-	if !pgID.Valid {
-		return nil, ErrVenueNotFound
-	}
-	pgOrgUUID := pgUUIDFromString(organizerID)
-	if !pgOrgUUID.Valid {
-		return nil, ErrUnauthorized
-	}
-
-	country := req.Country
-	if country == "" {
-		country = "Indonesia"
-	}
-
-	venue, err := s.queries.UpdateVenue(ctx, db.UpdateVenueParams{
-		ID:          pgID,
-		Name:        req.Name,
-		Address:     req.Address,
-		City:        req.City,
-		Province:    pgTextFromString(req.Province),
-		Country:     country,
-		Latitude:    pgNumericFromFloat(req.Latitude),
-		Longitude:   pgNumericFromFloat(req.Longitude),
-		Capacity:    pgInt4FromInt32(req.Capacity),
-		Description: pgTextFromString(req.Description),
-		OrganizerID: pgOrgUUID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrVenueNotFound
-		}
-		return nil, fmt.Errorf("failed to update venue: %w", err)
-	}
-
-	return &venue, nil
-}
-
-func (s *VenueService) DeleteVenue(ctx context.Context, venueID, organizerID string) error {
-	pgID := pgUUIDFromString(venueID)
-	if !pgID.Valid {
-		return ErrVenueNotFound
-	}
-	pgOrgUUID := pgUUIDFromString(organizerID)
-	if !pgOrgUUID.Valid {
-		return ErrUnauthorized
-	}
-
-	err := s.queries.DeleteVenue(ctx, db.DeleteVenueParams{
-		ID:          pgID,
-		OrganizerID: pgOrgUUID,
-	})
-	return err
-}
 
 func pgNumericFromFloat(f float64) pgtype.Numeric {
 	if f == 0 {
