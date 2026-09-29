@@ -26,13 +26,13 @@ import (
 )
 
 var (
-	ErrSoldOut                  = errors.New("tiket telah habis terjual")
-	ErrActivePendingOrderExists = errors.New("anda masih memiliki pesanan yang belum diselesaikan untuk event ini")
-	ErrOrderProcessing          = errors.New("pesanan Anda sedang diproses, silakan tunggu")
-	ErrSaleEnded                = errors.New("periode penjualan tiket untuk kategori ini telah berakhir")
-	ErrSaleNotStarted           = errors.New("penjualan tiket untuk kategori ini belum dimulai")
-	ErrEventEnded               = errors.New("event ini telah berakhir")
-	ErrTicketInactive           = errors.New("kategori tiket sedang tidak aktif")
+	ErrSoldOut                  = errors.New("Tiket telah habis terjual.")
+	ErrActivePendingOrderExists = errors.New("Anda masih memiliki pesanan yang belum diselesaikan untuk event ini.")
+	ErrOrderProcessing          = errors.New("Pesanan Anda sedang diproses, silakan tunggu.")
+	ErrSaleEnded                = errors.New("Periode penjualan tiket untuk kategori ini telah berakhir.")
+	ErrSaleNotStarted           = errors.New("Penjualan tiket untuk kategori ini belum dimulai.")
+	ErrEventEnded               = errors.New("Event ini telah berakhir.")
+	ErrTicketInactive           = errors.New("Kategori tiket sedang tidak aktif.")
 )
 
 var reserveStockLua = redis.NewScript(`
