@@ -216,6 +216,16 @@ func (s *TicketService) GetOrderQueueStatus(ctx context.Context, orderIDStr stri
 		return res, nil
 	}
 
+	if time.Now().After(order.ExpiresAt) {
+		_ = s.CancelOrder(ctx, orderIDStr)
+		if s.redisClient != nil {
+			_, _ = s.AdvanceQueue(ctx, order.EventID)
+		}
+		res.Status = "EXPIRED"
+		res.Position = 0
+		return res, nil
+	}
+
 	if s.redisClient == nil {
 		// Fallback without redis: active with order.ExpiresAt
 		rem := int64(time.Until(order.ExpiresAt).Seconds())
@@ -299,6 +309,7 @@ func (s *TicketService) GetOrderQueueStatus(ctx context.Context, orderIDStr stri
 
 	// If still pending, re-enqueue into waiting list
 	s.redisClient.RPush(ctx, waitingKey, orderIDStr)
+	_, _ = s.pool.Exec(ctx, "UPDATE orders SET expires_at = $2, updated_at = NOW() WHERE id = $1", oid, time.Now().Add(2*time.Hour))
 	llen, _ := s.redisClient.LLen(ctx, waitingKey).Result()
 	pos := int(llen) + 1
 	res.Status = "WAITING"
