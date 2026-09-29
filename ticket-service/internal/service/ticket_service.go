@@ -361,6 +361,9 @@ func (s *TicketService) CreateOrder(ctx context.Context, userID string, req Crea
 	payloadBytes, _ := json.Marshal(eventPayload)
 	_ = s.producer.Publish(ctx, "order.created", []byte(order.ID.String()), payloadBytes)
 
+	// 8. Register into Event Queue
+	_, _ = s.EnqueueOrder(ctx, order.ID, eid, uid)
+
 	return &order, nil
 }
 
@@ -421,11 +424,19 @@ func (s *TicketService) HandlePaymentSuccess(ctx context.Context, orderID string
 		}
 	}
 
+	// Advance queue for this event
+	_, _ = s.AdvanceQueue(ctx, order.EventID)
+
 	return nil
 }
 
 func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 	oid, err := uuid.Parse(orderID)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.queries.GetOrder(ctx, oid)
 	if err != nil {
 		return err
 	}
@@ -455,6 +466,18 @@ func (s *TicketService) CancelOrder(ctx context.Context, orderID string) error {
 	payloadBytes, _ := json.Marshal(eventPayload)
 	_ = s.producer.Publish(ctx, "order.cancelled", []byte(orderID), payloadBytes)
 
+	// Clean up from Redis queue and advance if it was active
+	if s.redisClient != nil {
+		eventKey := fmt.Sprintf("queue:event:%s", order.EventID.String())
+		activeKey := fmt.Sprintf("%s:active", eventKey)
+		activeID, _ := s.redisClient.Get(ctx, activeKey).Result()
+		if activeID == orderID {
+			_, _ = s.AdvanceQueue(ctx, order.EventID)
+		} else {
+			s.redisClient.LRem(ctx, fmt.Sprintf("%s:waiting", eventKey), 0, orderID)
+		}
+	}
+
 	return nil
 }
 
@@ -480,6 +503,16 @@ func (s *TicketService) CreatePaymentToken(ctx context.Context, orderID string, 
 
 	if order.Status != "PENDING" {
 		return "", "", errors.New("order is not pending")
+	}
+
+	// Verify Queue position: only active turn can request payment token
+	if s.redisClient != nil {
+		s.CheckAndAdvanceExpiredActive(ctx, order.EventID)
+		activeKey := fmt.Sprintf("queue:event:%s:active", order.EventID.String())
+		activeID := s.redisClient.Get(ctx, activeKey).Val()
+		if activeID != "" && activeID != order.ID.String() {
+			return "", "", errors.New("Belum giliran Anda untuk melakukan pembayaran tiket ini. Harap tunggu di antrian.")
+		}
 	}
 
 	val, err := order.TotalAmount.Float64Value()

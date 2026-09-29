@@ -100,6 +100,71 @@ func (h *OrderHandler) CreatePaymentToken(c *gin.Context) {
 	})
 }
 
+func (h *OrderHandler) GetOrderQueueStatus(c *gin.Context) {
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	uidStr := ""
+	if exists && userID != nil {
+		if s, ok := userID.(string); ok {
+			uidStr = s
+		}
+	}
+
+	orderID := c.Param("id")
+	if orderID == "" {
+		response.ValidationError(c, "order id is required")
+		return
+	}
+
+	status, err := h.ticketService.GetOrderQueueStatus(c.Request.Context(), orderID, uidStr)
+	if err != nil {
+		if strings.Contains(err.Error(), "access denied") {
+			response.Error(c, http.StatusForbidden, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			response.NotFound(c, err.Error())
+			return
+		}
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "queue status retrieved", status)
+}
+
+func (h *OrderHandler) CancelOrder(c *gin.Context) {
+	userID, exists := c.Get(middleware.AuthUserIDKey)
+	uidStr := ""
+	if exists && userID != nil {
+		if s, ok := userID.(string); ok {
+			uidStr = s
+		}
+	}
+
+	orderID := c.Param("id")
+	if orderID == "" {
+		response.ValidationError(c, "order id is required")
+		return
+	}
+
+	err := h.ticketService.CancelOrderInQueue(c.Request.Context(), orderID, uidStr)
+	if err != nil {
+		if strings.Contains(err.Error(), "access denied") {
+			response.Error(c, http.StatusForbidden, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			response.NotFound(c, err.Error())
+			return
+		}
+		response.InternalError(c, err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "order cancelled successfully", nil)
+}
+
+
 
 
 func (h *OrderHandler) MidtransWebhook(c *gin.Context) {
