@@ -4,7 +4,7 @@ services:
     container_name: entra-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: entra
       POSTGRES_PASSWORD: entra_secret
